@@ -17,7 +17,7 @@ class Core(object):
     Main class.
 
     """
-    def __init__(self):
+    def __init__(self, coda_ai = None):
         environ['SDL_VIDEO_CENTERED'] = '1'
         pg.mixer.pre_init(44100, -16, 2, 1024)
         pg.init()
@@ -37,6 +37,9 @@ class Core(object):
         self.keyU = False
         self.keyD = False
         self.keyShift = False
+        
+        self.coda_ai = coda_ai
+        self.timer_salto_in_alto = 0
 
     def main_loop(self):
         while self.run:
@@ -80,6 +83,35 @@ class Core(object):
                     self.keyU = False
                 elif e.key == K_LSHIFT:
                     self.keyShift = False
+                    
+        if self.coda_ai is not None:
+            # Svuotiamo la coda per leggere i comandi
+            while not self.coda_ai.empty():
+                comando = self.coda_ai.get()
+                
+                # Movimento X
+                if comando == "SINISTRA":
+                    self.keyL = True
+                    self.keyR = False
+                elif comando == "DESTRA":
+                    self.keyR = True
+                    self.keyL = False
+                elif comando == "FERMO_X":
+                    self.keyR = False
+                    self.keyL = False
+                
+                # Salto (Simuliamo la pressione veloce)
+                elif comando == "SALTO":
+                    self.keyU = True 
+                    # Per il salto, bisogna dover resettare il tasto nel frame successivo
+                    # altrimenti Mario continuerà a saltare all'infinito.
+                    self.timer_salto_in_alto = pg.time.get_ticks()
+                
+                # Sprint
+                elif comando == "SPRINT":
+                    self.keyShift = True
+                elif comando == "CAMMINA":
+                    self.keyShift = False
 
     def input_menu(self):
         for e in pg.event.get():
@@ -92,6 +124,15 @@ class Core(object):
 
     def update(self):
         self.get_mm().update(self)
+        # --- GESTIONE SALTO CV ---
+        # Se il timer è partito (maggiore di 0), calcoliamo quanto tempo è passato
+        if self.timer_salto_in_alto > 0:
+            tempo_passato = pg.time.get_ticks() - self.timer_salto_in_alto
+            
+            # Se sono passati 300 millisecondi, "rilasciamo" il pulsante
+            if tempo_passato > 300: 
+                self.keyU = False
+                self.timer_salto_in_alto = 0 # Resettiamo il cronometro
 
     def render(self):
         self.get_mm().render(self)
