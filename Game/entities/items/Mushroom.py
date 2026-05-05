@@ -16,7 +16,7 @@ class Mushroom(Entity):
 
         self.spawned = False
         self.spawn_y_offset = 0
-        self.image = pg.image.load('assets/images/mushroom.png').convert_alpha()
+        self.image = pg.image.load('Game/assets/images/mushroom.png').convert_alpha()
 
     def check_collision_with_player(self, core):
         if self.rect.colliderect(core.get_map().get_player().rect):

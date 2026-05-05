@@ -31,7 +31,7 @@ class Player(object):
         
         self.pos_x = x_pos
 
-        self.image = pg.image.load('assets/images/mario/mario.png').convert_alpha()
+        self.image = pg.image.load('Game/assets/images/mario/mario.png').convert_alpha()
         self.sprites = []
         self.load_sprites()
 
@@ -40,80 +40,80 @@ class Player(object):
     def load_sprites(self):
         self.sprites = [
             # 0 Piccolo, fermo
-            pg.image.load('assets/images/Mario/mario.png'),
+            pg.image.load('Game/assets/images/Mario/mario.png'),
 
             # 1 Piccolo, movimento 0
-            pg.image.load('assets/images/Mario/mario_move0.png'),
+            pg.image.load('Game/assets/images/Mario/mario_move0.png'),
 
             # 2 Piccolo, movimento 1
-            pg.image.load('assets/images/Mario/mario_move1.png'),
+            pg.image.load('Game/assets/images/Mario/mario_move1.png'),
 
             # 3 Piccolo, movimento 2
-            pg.image.load('assets/images/Mario/mario_move2.png'),
+            pg.image.load('Game/assets/images/Mario/mario_move2.png'),
 
             # 4 Piccolo, salto
-            pg.image.load('assets/images/Mario/mario_jump.png'),
+            pg.image.load('Game/assets/images/Mario/mario_jump.png'),
 
             # 5 Piccolo, fine 0
-            pg.image.load('assets/images/Mario/mario_end.png'),
+            pg.image.load('Game/assets/images/Mario/mario_end.png'),
 
             # 6 Piccolo, fine 1
-            pg.image.load('assets/images/Mario/mario_end1.png'),
+            pg.image.load('Game/assets/images/Mario/mario_end1.png'),
 
             # 7 Piccolo, stop
-            pg.image.load('assets/images/Mario/mario_st.png'),
+            pg.image.load('Game/assets/images/Mario/mario_st.png'),
 
             # =============================================
 
             # 8 Grande, fermo
-            pg.image.load('assets/images/Mario/mario1.png'),
+            pg.image.load('Game/assets/images/Mario/mario1.png'),
 
             # 9 Grande, movimento 0
-            pg.image.load('assets/images/Mario/mario1_move0.png'),
+            pg.image.load('Game/assets/images/Mario/mario1_move0.png'),
 
             # 10 Grande, movimento 1
-            pg.image.load('assets/images/Mario/mario1_move1.png'),
+            pg.image.load('Game/assets/images/Mario/mario1_move1.png'),
 
             # 11 Grande, movimento 2
-            pg.image.load('assets/images/Mario/mario1_move2.png'),
+            pg.image.load('Game/assets/images/Mario/mario1_move2.png'),
 
             # 12 Grande, salto
-            pg.image.load('assets/images/Mario/mario1_jump.png'),
+            pg.image.load('Game/assets/images/Mario/mario1_jump.png'),
 
             # 13 Grande, fine 0
-            pg.image.load('assets/images/Mario/mario1_end.png'),
+            pg.image.load('Game/assets/images/Mario/mario1_end.png'),
 
             # 14 Grande, fine 1
-            pg.image.load('assets/images/Mario/mario1_end1.png'),
+            pg.image.load('Game/assets/images/Mario/mario1_end1.png'),
 
             # 15 Grande, stop
-            pg.image.load('assets/images/Mario/mario1_st.png'),
+            pg.image.load('Game/assets/images/Mario/mario1_st.png'),
 
             # =============================================
 
             # 16 Grande_fuoco, fermo
-            pg.image.load('assets/images/Mario/mario2.png'),
+            pg.image.load('Game/assets/images/Mario/mario2.png'),
 
             # 17 Grande_fuoco, movimento 0
-            pg.image.load('assets/images/Mario/mario2_move0.png'),
+            pg.image.load('Game/assets/images/Mario/mario2_move0.png'),
 
             # 18 Grande_fuoco, movimento 1
-            pg.image.load('assets/images/Mario/mario2_move1.png'),
+            pg.image.load('Game/assets/images/Mario/mario2_move1.png'),
 
             # 19 Grande_fuoco, movimento 2
-            pg.image.load('assets/images/Mario/mario2_move2.png'),
+            pg.image.load('Game/assets/images/Mario/mario2_move2.png'),
 
             # 20 Grande_fuoco, salto
-            pg.image.load('assets/images/Mario/mario2_jump.png'),
+            pg.image.load('Game/assets/images/Mario/mario2_jump.png'),
 
             # 21 Grande_fuoco, fine 0
-            pg.image.load('assets/images/Mario/mario2_end.png'),
+            pg.image.load('Game/assets/images/Mario/mario2_end.png'),
 
             # 22 Grande_fuoco, fine 1
-            pg.image.load('assets/images/Mario/mario2_end1.png'),
+            pg.image.load('Game/assets/images/Mario/mario2_end1.png'),
 
             # 23 Grande_fuoco, stop
-            pg.image.load('assets/images/Mario/mario2_st.png'),
+            pg.image.load('Game/assets/images/Mario/mario2_st.png'),
         ]
 
         # Lato sinistro
@@ -121,13 +121,13 @@ class Player(object):
             self.sprites.append(pg.transform.flip(self.sprites[i], 180, 0))
 
         # Cambio livello di potenza, destra
-        self.sprites.append(pg.image.load('assets/images/Mario/mario_lvlup.png').convert_alpha())
+        self.sprites.append(pg.image.load('Game/assets/images/Mario/mario_lvlup.png').convert_alpha())
 
         # Cambio livello di potenza, sinistra
         self.sprites.append(pg.transform.flip(self.sprites[-1], 180, 0))
 
         # Morte
-        self.sprites.append(pg.image.load('assets/images/Mario/mario_death.png').convert_alpha())
+        self.sprites.append(pg.image.load('Game/assets/images/Mario/mario_death.png').convert_alpha())
 
     def update(self, core):
         self.player_physics(core)

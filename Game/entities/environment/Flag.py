@@ -11,10 +11,10 @@ class Flag(object):
         # La bandiera è composta da due immagini: il palo e la bandiera. Il palo è statico, 
         # mentre la bandiera si muove verso il basso quando Mario la tocca.
 
-        self.pillar_image = pg.image.load('assets/images/flag_pillar.png').convert_alpha()
+        self.pillar_image = pg.image.load('Game/assets/images/flag_pillar.png').convert_alpha()
         self.pillar_rect = pg.Rect(x_pos + 8, y_pos, 16, 304)
 
-        self.flag_image = pg.image.load('assets/images/flag.png').convert_alpha()
+        self.flag_image = pg.image.load('Game/assets/images/flag.png').convert_alpha()
         self.flag_rect = pg.Rect(x_pos - 18, y_pos + 16, 32, 32)
 
     def move_flag_down(self):

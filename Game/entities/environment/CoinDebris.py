@@ -18,10 +18,10 @@ class CoinDebris(object):
         self.current_image = 0
         self.image_tick = 0
         self.images = [
-            pg.image.load('assets/images/coin_an0.png').convert_alpha(),
-            pg.image.load('assets/images/coin_an1.png').convert_alpha(),
-            pg.image.load('assets/images/coin_an2.png').convert_alpha(),
-            pg.image.load('assets/images/coin_an3.png').convert_alpha()
+            pg.image.load('Game/assets/images/coin_an0.png').convert_alpha(),
+            pg.image.load('Game/assets/images/coin_an1.png').convert_alpha(),
+            pg.image.load('Game/assets/images/coin_an2.png').convert_alpha(),
+            pg.image.load('Game/assets/images/coin_an3.png').convert_alpha()
         ]
 
     def update(self, core):

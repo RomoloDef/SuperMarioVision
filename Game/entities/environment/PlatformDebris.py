@@ -10,7 +10,7 @@ class PlatformDebris(object):
 
     """
     def __init__(self, x_pos, y_pos):
-        self.image = pg.image.load('assets/images/block_debris0.png').convert_alpha()
+        self.image = pg.image.load('Game/assets/images/block_debris0.png').convert_alpha()
 
         # 4 parti
         self.rectangles = [

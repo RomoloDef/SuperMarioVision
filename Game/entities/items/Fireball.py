@@ -14,13 +14,13 @@ class Fireball(object):
 
         self.current_image = 0
         self.image_tick = 0
-        self.images = [pg.image.load('assets/images/fireball.png').convert_alpha()]
+        self.images = [pg.image.load('Game/assets/images/fireball.png').convert_alpha()]
         self.images.append(pg.transform.flip(self.images[0], 0, 90))
         self.images.append(pg.transform.flip(self.images[0], 90, 90))
         self.images.append(pg.transform.flip(self.images[0], 90, 0))
-        self.images.append(pg.image.load('assets/images/firework0.png').convert_alpha())
-        self.images.append(pg.image.load('assets/images/firework1.png').convert_alpha())
-        self.images.append(pg.image.load('assets/images/firework2.png').convert_alpha())
+        self.images.append(pg.image.load('Game/assets/images/firework0.png').convert_alpha())
+        self.images.append(pg.image.load('Game/assets/images/firework1.png').convert_alpha())
+        self.images.append(pg.image.load('Game/assets/images/firework2.png').convert_alpha())
 
     def update_image(self, core):
         self.image_tick += 1

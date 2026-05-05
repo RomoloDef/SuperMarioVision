@@ -17,9 +17,9 @@ class Goombas(Entity):
         self.current_image = 0
         self.image_tick = 0
         self.images = [
-            pg.image.load('assets/images/goombas_0.png').convert_alpha(),
-            pg.image.load('assets/images/goombas_1.png').convert_alpha(),
-            pg.image.load('assets/images/goombas_dead.png').convert_alpha()
+            pg.image.load('Game/assets/images/goombas_0.png').convert_alpha(),
+            pg.image.load('Game/assets/images/goombas_1.png').convert_alpha(),
+            pg.image.load('Game/assets/images/goombas_dead.png').convert_alpha()
         ]
         self.images.append(pg.transform.flip(self.images[0], 0, 180))
 

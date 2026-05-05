@@ -13,10 +13,10 @@ class Flower(Entity):
         self.current_image = 0
         self.image_tick = 0
         self.images = (
-            pg.image.load('assets/images/flower0.png').convert_alpha(),
-            pg.image.load('assets/images/flower1.png').convert_alpha(),
-            pg.image.load('assets/images/flower2.png').convert_alpha(),
-            pg.image.load('assets/images/flower3.png').convert_alpha()
+            pg.image.load('Game/assets/images/flower0.png').convert_alpha(),
+            pg.image.load('Game/assets/images/flower1.png').convert_alpha(),
+            pg.image.load('Game/assets/images/flower2.png').convert_alpha(),
+            pg.image.load('Game/assets/images/flower3.png').convert_alpha()
         )
 
     def check_collision_with_player(self, core):

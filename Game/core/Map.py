@@ -61,7 +61,7 @@ class Map(object):
         self.oGameUI = GameUI()
 
     def loadWorld_11(self):
-        tmx_data = load_pygame("assets/worlds/1-1/W11.tmx")
+        tmx_data = load_pygame("Game/assets/worlds/1-1/W11.tmx")
         self.mapSize = (tmx_data.width, tmx_data.height)
 
         self.sky = pg.Surface((WINDOW_W, WINDOW_H))
