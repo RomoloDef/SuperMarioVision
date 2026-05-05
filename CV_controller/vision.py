@@ -1,17 +1,68 @@
 import cv2
 import mediapipe as mp
-import time 
+import time
+import os
+import urllib.request
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+
+# --- 1. DEFINIZIONE MANUALE DELLE CONNESSIONI ---
+# Poiché mp.solutions non è disponibile in questa versione, definiamo qui quali punti collegare
+POSE_CONNECTIONS = [
+    (11, 12), (11, 13), (13, 15), (12, 14), (14, 16), # Spalle e braccia
+    (11, 23), (12, 24), (23, 24),                   # Busto
+    (23, 25), (24, 26), (25, 27), (26, 28)          # Gambe
+]
+
+def download_model(model_path):
+    """Scarica il modello pre-addestrato se non presente."""
+    if not os.path.exists(model_path):
+        print(f"Scaricamento modello in corso: {model_path}...")
+        url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+        try:
+            urllib.request.urlretrieve(url, model_path)
+            print("✅ Modello scaricato con successo!")
+        except Exception as e:
+            print(f"❌ Errore durante il download: {e}")
+
+def disegna_scheletro_manuale(frame, landmarks):
+    """Disegna manualmente i punti e le connessioni della posa usando solo OpenCV."""
+    h, w, _ = frame.shape
+    # Disegna connessioni
+    for start_idx, end_idx in POSE_CONNECTIONS:
+        if start_idx < len(landmarks) and end_idx < len(landmarks):
+            lm1 = landmarks[start_idx]
+            lm2 = landmarks[end_idx]
+            # Disegna solo se i punti hanno una visibilità minima
+            if lm1.visibility > 0.5 and lm2.visibility > 0.5:
+                p1 = (int(lm1.x * w), int(lm1.y * h))
+                p2 = (int(lm2.x * w), int(lm2.y * h))
+                cv2.line(frame, p1, p2, (0, 255, 0), 2)
+    
+    # Disegna i punti principali (Naso e Spalle)
+    for i in [0, 11, 12]:
+        if i < len(landmarks):
+            lm = landmarks[i]
+            if lm.visibility > 0.5:
+                cx, cy = int(lm.x * w), int(lm.y * h)
+                cv2.circle(frame, (cx, cy), 5, (255, 255, 255), -1)
 
 def avvia_telecamera(coda_comandi):
-    mp_pose = mp.solutions.pose
-    pose = mp_pose.Pose(
-        static_image_mode=False,
-        model_complexity=0,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5
-    )
-    mp_drawing = mp.solutions.drawing_utils
+    # --- 2. CONFIGURAZIONE MEDIAPIPE 0.10.35 (TASKS API) ---
+    model_path = 'pose_landmarker_lite.task'
+    download_model(model_path)
 
+    base_options = python.BaseOptions(model_asset_path=model_path)
+    options = vision.PoseLandmarkerOptions(
+        base_options=base_options,
+        running_mode=vision.RunningMode.VIDEO,
+        min_pose_detection_confidence=0.5,
+        min_pose_presence_confidence=0.5,
+        min_tracking_confidence=0.5,
+        output_segmentation_masks=False
+    )
+    
+    detector = vision.PoseLandmarker.create_from_options(options)
     telecamera = cv2.VideoCapture(0)
 
     # --- VARIABILI DI CALIBRAZIONE ---
@@ -27,8 +78,11 @@ def avvia_telecamera(coda_comandi):
     passi_sprint = 0
     tempo_ultimo_passo = time.time()
     tempo_ultimo_salto = time.time()
+    
+    # Variabile per il calcolo sicuro del tempo richiesto da MediaPipe
+    conteggio_frame_totali = 0 
 
-    print("Sistema AI avviato. Mettiti in posizione per la calibrazione (5 secondi)!")
+    print("Sistema AI (v0.10.35) avviato. Mettiti in posizione per la calibrazione!")
 
     while True:
         success, frame = telecamera.read()
@@ -37,16 +91,30 @@ def avvia_telecamera(coda_comandi):
 
         frame = cv2.flip(frame, 1)
         img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = pose.process(img_rgb)
+        
+        # MediaPipe 0.10 richiede un oggetto mp.Image specifico
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
+        
+        # Calcolo timestamp per RunningMode.VIDEO
+        conteggio_frame_totali += 1
+        timestamp_ms = conteggio_frame_totali * 33 
+
+        # Rilevamento pose
+        results = detector.detect_for_video(mp_image, timestamp_ms)
 
         if results.pose_landmarks:
-            mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+            # Estrazione primo set di landmarks (lista di oggetti, non protobuf)
+            pose_landmarks = results.pose_landmarks[0]
             
-            spalla_dx = results.pose_landmarks.landmark[11]
-            spalla_sx = results.pose_landmarks.landmark[12]
+            # Disegno manuale dello scheletro
+            disegna_scheletro_manuale(frame, pose_landmarks)
+            
+            # --- LOGICA DEL GIOCO ---
+            spalla_dx = pose_landmarks[11]
+            spalla_sx = pose_landmarks[12]
             altezza_media = (spalla_dx.y + spalla_sx.y) / 2
             
-            naso = results.pose_landmarks.landmark[0]
+            naso = pose_landmarks[0]
 
             # --- LOGICA DI CALIBRAZIONE PER LO SPRINT ---
             if in_calibrazione == 1:
@@ -57,7 +125,7 @@ def avvia_telecamera(coda_comandi):
                     conteggio_frame += 1
                     cv2.putText(frame, f"Calibrazione... {5 - int(tempo_trascorso)}s", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 165, 255), 2)
                 else:
-                    altezza_riposo = somma_altezze / conteggio_frame
+                    altezza_riposo = somma_altezze / (conteggio_frame if conteggio_frame > 0 else 1)
                     in_calibrazione = 2
                     inizio_tempo = time.time() 
                     print(f"✅ Calibrazione completata! Altezza di riposo: {altezza_riposo:.4f}")
@@ -143,3 +211,4 @@ def avvia_telecamera(coda_comandi):
 
     telecamera.release()
     cv2.destroyAllWindows()
+    detector.close()
