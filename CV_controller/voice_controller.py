@@ -2,6 +2,33 @@ import json
 import queue
 import sounddevice as sd
 from vosk import Model, KaldiRecognizer
+import ssl
+import os
+
+# Fix per errore SSL durante il download del modello (Global SSL)
+ssl._create_default_https_context = ssl._create_unverified_context
+
+# Fix per requests (usato internamente da vosk per scaricare il modello)
+try:
+    import requests
+    from requests.packages.urllib3.exceptions import InsecureRequestWarning
+    requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+    
+    # Patch globale per disabilitare la verifica SSL in requests
+    _orig_get = requests.get
+    def _patched_get(*args, **kwargs):
+        kwargs['verify'] = False
+        return _orig_get(*args, **kwargs)
+    requests.get = _patched_get
+    
+    _orig_request = requests.Session.request
+    def _patched_request(self, *args, **kwargs):
+        kwargs['verify'] = False
+        return _orig_request(self, *args, **kwargs)
+    requests.Session.request = _patched_request
+    print("🔧 Patch SSL applicata a 'requests'.")
+except ImportError:
+    pass
 
 def ascolta_microfono(coda_comandi):
     print("Cerco il modello italiano (se non c'è, lo scarico in automatico)...")

@@ -2,3 +2,9 @@ opencv-python
 mediapipe==0.10.35
 pygame
 pytmx
+vosk
+sounddevice
+scikit-learn
+pandas
+matplotlib
+numpy

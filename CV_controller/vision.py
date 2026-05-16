@@ -5,6 +5,22 @@ import os
 import urllib.request
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+import sys
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
+try:
+    from .gestures import predict_gesture
+    from .signal_filters import PoseFilter
+except (ImportError, ValueError):
+    try:
+        from gestures import predict_gesture  # type:ignore[import]
+        from signal_filters import PoseFilter  # type:ignore[import]
+    except ImportError:
+        from CV_controller.gestures import predict_gesture
+        from CV_controller.signal_filters import PoseFilter
 
 # --- 1. DEFINIZIONE MANUALE DELLE CONNESSIONI ---
 # Poiché mp.solutions non è disponibile in questa versione, definiamo qui quali punti collegare
@@ -64,38 +80,31 @@ def avvia_telecamera(coda_comandi):
     
     detector = vision.PoseLandmarker.create_from_options(options)
     telecamera = cv2.VideoCapture(0)
-
-    # --- VARIABILI DI CALIBRAZIONE ---
-    in_calibrazione = 1
-    inizio_tempo = time.time() 
-    somma_altezze = 0
-    conteggio_frame = 0
-
-    altezza_riposo = 0
-    salto_massimo = 0
-
-    # --- VARIABILI DEL GIOCO (SPRINT) ---
-    passi_sprint = 0
-    tempo_ultimo_passo = time.time()
-    tempo_ultimo_salto = time.time()
     
-    # Variabile per il calcolo sicuro del tempo richiesto da MediaPipe
-    conteggio_frame_totali = 0 
+    # Inizializza filtro
+    pose_filter = PoseFilter(filter_type='kalman')
 
-    print("Sistema AI (v0.10.35) avviato. Mettiti in posizione per la calibrazione!")
+    # --- VARIABILI DI CALIBRAZIONE E STATISTICHE ---
+    in_calibrazione = 0 # 0: Pronto, 1: X-Axis, 2: Y-Axis (Semplificato per nuovo sistema)
+    
+    # Latency tracking
+    prev_time = time.time()
+    latency_ms = 0
+    conteggio_frame_totali = 0
+
+    print("Sistema AI (v0.10.35) avviato con Classificatore Gestures.")
 
     while True:
+        loop_start = time.time()
         success, frame = telecamera.read()
         if not success: 
             continue
 
         frame = cv2.flip(frame, 1)
+        h, w, _ = frame.shape
         img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
-        # MediaPipe 0.10 richiede un oggetto mp.Image specifico
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
-        
-        # Calcolo timestamp per RunningMode.VIDEO
         conteggio_frame_totali += 1
         timestamp_ms = conteggio_frame_totali * 33 
 
@@ -103,111 +112,95 @@ def avvia_telecamera(coda_comandi):
         results = detector.detect_for_video(mp_image, timestamp_ms)
 
         if results.pose_landmarks:
-            # Estrazione primo set di landmarks (lista di oggetti, non protobuf)
             pose_landmarks = results.pose_landmarks[0]
+            
+            # Applicazione FILTRO
+            pose_landmarks = pose_filter.filter(pose_landmarks)
             
             # Disegno manuale dello scheletro
             disegna_scheletro_manuale(frame, pose_landmarks)
             
-            # --- LOGICA DEL GIOCO ---
-            spalla_dx = pose_landmarks[11]
-            spalla_sx = pose_landmarks[12]
-            altezza_media = (spalla_dx.y + spalla_sx.y) / 2
-            
-            naso = pose_landmarks[0]
-
-            # --- LOGICA DI CALIBRAZIONE PER LO SPRINT ---
-            if in_calibrazione == 1:
-                tempo_trascorso = time.time() - inizio_tempo
-                
-                if tempo_trascorso < 5.0: 
-                    somma_altezze += altezza_media
-                    conteggio_frame += 1
-                    cv2.putText(frame, f"Calibrazione... {5 - int(tempo_trascorso)}s", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 165, 255), 2)
-                else:
-                    altezza_riposo = somma_altezze / (conteggio_frame if conteggio_frame > 0 else 1)
-                    in_calibrazione = 2
-                    inizio_tempo = time.time() 
-                    print(f"✅ Calibrazione completata! Altezza di riposo: {altezza_riposo:.4f}")
-            
-            # --- LOGICA DI CALIBRAZIONE PER IL SALTO ---
-            elif in_calibrazione == 2:
-                tempo_trascorso = time.time() - inizio_tempo
-                delta_spalle = altezza_riposo - altezza_media
-                
-                if delta_spalle > salto_massimo:
-                    salto_massimo = delta_spalle
-
-                if tempo_trascorso < 5.0:
-                    cv2.putText(frame, f"2. FAI UN BEL SALTO! ... {5 - int(tempo_trascorso)}s", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 165, 255), 2)
-                    cv2.putText(frame, f"Salto Max registrato: {salto_massimo:.3f}", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                else:
-                    if salto_massimo < 0.15:
-                        salto_massimo = 0.15
-                    in_calibrazione = 0
-                    tempo_ultimo_passo = time.time()
-                    print(f"✅ Salto completato! Salto Max: {salto_massimo:.4f}")
-                    
-            # --- GIOCO ATTIVO ---
-            else:
-                h, w, _ = frame.shape
+            # --- LOGICA DI CALIBRAZIONE GUIDATA ---
+            if in_calibrazione < 3:
                 overlay = frame.copy()
+                cv2.rectangle(overlay, (0, 0), (w, h), (0, 0, 0), -1)
+                cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
                 
-                cv2.rectangle(overlay, (0, 0), (int(w * 0.33), h), (0, 0, 255), -1)   
-                cv2.rectangle(overlay, (int(w * 0.33), 0), (int(w * 0.66), h), (0, 255, 0), -1) 
-                cv2.rectangle(overlay, (int(w * 0.66), 0), (w, h), (255, 0, 0), -1)   
-                cv2.addWeighted(overlay, 0.2, frame, 0.8, 0, frame)
-
-                # --- 1. COMANDI ASSE X (DESTRA/SINISTRA) ---
-                if naso.x < 0.33:
-                    direzione = "SINISTRA <--"
-                    coda_comandi.put("SINISTRA")
-                elif naso.x > 0.66:
-                    direzione = "--> DESTRA"
-                    coda_comandi.put("DESTRA")
-                else:
-                    direzione = "ZONA MORTA (FERMO)"
-                    coda_comandi.put("FERMO_X")
+                if in_calibrazione == 0:
+                    testo = "BENVENUTO! Mettiti al centro"
+                    sottotesto = "Premi 'C' per iniziare la calibrazione"
+                elif in_calibrazione == 1:
+                    testo = "CALIBRAZIONE X: Muoviti a DX e SX"
+                    sottotesto = "Assicurati che il modello ti veda bene"
+                elif in_calibrazione == 2:
+                    testo = "CALIBRAZIONE Y: Fai un piccolo salto"
+                    sottotesto = "Premi 'C' quando hai finito"
+                
+                cv2.putText(frame, testo, (50, h//2), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                cv2.putText(frame, sottotesto, (50, h//2 + 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1)
+            
+            else:
+                # --- CLASSIFICAZIONE GESTI ---
+                gesto, confidence = predict_gesture(pose_landmarks)
+                
+                # FALLBACK SE MODELLO MANCANTE (Logica Manuale Semplice)
+                model_loaded = confidence > 0 or gesto != "unknown"
+                if not model_loaded:
+                    # Logica basata su posizione naso e spalle (fallback)
+                    naso = pose_landmarks[0]
+                    spalla_dx = pose_landmarks[11]
+                    spalla_sx = pose_landmarks[12]
+                    y_spalle = (spalla_dx.y + spalla_sx.y) / 2
                     
-                cv2.putText(frame, direzione, (w - 300, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-                
-                # --- 2. COMANDI ASSE Y (SALTO/CORSA) ---
-                delta_spalle = altezza_riposo - altezza_media
-                soglia_salto = salto_massimo * 0.75       
-                tetto_corsa = salto_massimo * 0.50        
+                    if naso.x < 0.4: gesto = "sinistra"
+                    elif naso.x > 0.6: gesto = "destra"
+                    elif y_spalle < 0.45: gesto = "salto"
+                    else: gesto = "fermo"
+                    confidence = 0.5
 
-                stato = "Camminata normale"
-                colore = (0, 255, 0) 
-
-                if delta_spalle >= soglia_salto:
-                    if (time.time() - tempo_ultimo_salto) > 1.0: 
-                        stato = "SALTO !!!"
-                        colore = (0, 0, 255) 
-                        coda_comandi.put("SALTO")
-                        tempo_ultimo_salto = time.time()
+                # --- LOGICA DI COMANDO BASATA SU CLASSIFICATORE ---
+                if gesto == "sinistra":
+                    coda_comandi.put("SINISTRA")
+                    colore_feedback = (255, 0, 0)
+                elif gesto == "destra":
+                    coda_comandi.put("DESTRA")
+                    colore_feedback = (0, 0, 255)
+                elif gesto == "salto":
+                    coda_comandi.put("SALTO")
+                    colore_feedback = (0, 255, 255)
+                elif gesto == "sprint":
+                    coda_comandi.put("SPRINT")
+                    colore_feedback = (0, 165, 255)
                 else:
-                    if time.time() - tempo_ultimo_passo > 1.0:
-                        passi_sprint = 0
+                    coda_comandi.put("FERMO_X")
+                    coda_comandi.put("CAMMINA")
+                    colore_feedback = (0, 255, 0)
 
-                    if 0.04 < delta_spalle < tetto_corsa: 
-                        if time.time() - tempo_ultimo_passo > 0.1:
-                            passi_sprint += 1
-                            tempo_ultimo_passo = time.time()
+                # Overlay HUD
+                cv2.rectangle(frame, (10, 10), (450, 150), (0, 0, 0), -1)
+                cv2.putText(frame, f"GESTO: {gesto.upper()}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, colore_feedback, 2)
+                if not model_loaded:
+                    cv2.putText(frame, "ATTENZIONE: MODELLO AI MANCANTE", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+                    cv2.putText(frame, "(Uso fallback manuale)", (20, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+                else:
+                    cv2.putText(frame, f"CONF: {confidence:.2f}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
+                cv2.putText(frame, f"LATENCY: {latency_ms:.1f}ms", (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
+        else:
+            # Messaggio se non rileva il corpo
+            cv2.putText(frame, "NESSUN CORPO RILEVATO", (w//2 - 150, h - 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
-                    if passi_sprint >= 3:
-                        stato = "SPRINT ATTIVO !!!"
-                        colore = (0, 165, 255) 
-                        coda_comandi.put("SPRINT")
-                    else:
-                        coda_comandi.put("CAMMINA")
-
-                cv2.putText(frame, stato, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, colore, 2)
-                cv2.putText(frame, f"Passi combo: {passi_sprint} | Delta: {delta_spalle:.3f}", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                cv2.putText(frame, f"Soglia Salto: >{soglia_salto:.2f} | Tetto Corsa: <{tetto_corsa:.2f}", (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-
-        cv2.imshow('Test AI Mario', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        # Calcolo latenza
+        latency_ms = (time.time() - loop_start) * 1000
+        
+        cv2.imshow('SuperMarioVision - AI Controller', frame)
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
             break
+        elif key == ord('c'):
+            in_calibrazione += 1
+            if in_calibrazione == 3:
+                print(">>> Calibrazione completata. Invio comando AVVIA_GIOCO...")
+                coda_comandi.put("AVVIA_GIOCO")
 
     telecamera.release()
     cv2.destroyAllWindows()

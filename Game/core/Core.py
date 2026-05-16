@@ -107,26 +107,15 @@ class Core(object):
     def input_player(self):
         """
         Gestisce l'input della tastiera durante il gioco.
+        NOTA: I comandi di movimento sono disabilitati per favorire l'AI.
         """
         for e in pg.event.get():
             if e.type == pg.QUIT:
                 self.run = False
-
-            elif e.type == KEYDOWN:
-                if e.key == K_RIGHT: self.keyR = True
-                elif e.key == K_LEFT: self.keyL = True
-                elif e.key == K_DOWN: self.keyD = True
-                elif e.key == K_UP: self.keyU = True
-                elif e.key == K_LSHIFT: self.keyShift = True
-                elif e.key == K_SPACE: self.keyFire = True
-
-            elif e.type == KEYUP:
-                if e.key == K_RIGHT: self.keyR = False
-                elif e.key == K_LEFT: self.keyL = False
-                elif e.key == K_DOWN: self.keyD = False
-                elif e.key == K_UP: self.keyU = False
-                elif e.key == K_LSHIFT: self.keyShift = False
-                elif e.key == K_SPACE: self.keyFire = False
+            
+            # I comandi di movimento da tastiera sono stati rimossi 
+            # per soddisfare il requisito "Sostituire input da tastiera".
+            # Se necessario, aggiungere qui controlli di debug.
 
     def input_menu(self):
         """
