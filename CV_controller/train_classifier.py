@@ -20,7 +20,6 @@ CSV_PATH    = 'gesture_dataset.csv'
 OUTPUT_DIR  = 'models'
 RANDOM_SEED = 42
 
-
 # ─────────────────────────────────────────
 # 1. CARICAMENTO E PREPROCESSING
 # ─────────────────────────────────────────

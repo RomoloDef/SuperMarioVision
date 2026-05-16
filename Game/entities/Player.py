@@ -153,10 +153,13 @@ class Player(object):
                 else:
                     core.get_sound().play('small_mario_jump', 0, 0.5)
 
-        # Sparo palla di fuoco e movimento veloce
+        # 1. MOVIMENTO VELOCE (Sprint legato allo Shift / Corpo)
         self.fast_moving = False
         if core.keyShift:
             self.fast_moving = True
+
+        # 2. SPARO PALLA DI FUOCO (Legato alla Barra Spaziatrice / Voce)
+        if core.keyFire:
             if self.powerLVL == 2:
                 if pg.time.get_ticks() > self.next_fireball_time:
                     if not (self.inLevelUpAnimation or self.inLevelDownAnimation):
