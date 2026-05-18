@@ -199,7 +199,7 @@ def main():
         salva_confusion_matrix(y_test, y_pred, le, nome, OUTPUT_DIR)
 
     # 4. Scegli il modello migliore e salvalo come 'best_model.pkl'
-    migliore_nome = max(risultati, key=risultati.get)
+    migliore_nome = max(risultati.keys(), key=lambda k: risultati[k])
     migliore_pipeline = modelli[migliore_nome]
 
     best_path = os.path.join(OUTPUT_DIR, 'best_model.pkl')

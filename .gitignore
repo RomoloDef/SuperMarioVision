@@ -2,3 +2,6 @@ venv
 **/__pycache__/
 __pycache__/
 *.task
+gesture_dataset.csv
+
+models/

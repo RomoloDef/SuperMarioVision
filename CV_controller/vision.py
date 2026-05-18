@@ -84,9 +84,7 @@ def avvia_telecamera(coda_comandi):
     # Inizializza filtro
     pose_filter = PoseFilter(filter_type='kalman')
 
-    # --- VARIABILI DI CALIBRAZIONE E STATISTICHE ---
-    in_calibrazione = 0 # 0: Pronto, 1: X-Axis, 2: Y-Axis (Semplificato per nuovo sistema)
-    
+    # --- VARIABILI DI STATISTICHE E LATENZA ---
     # Latency tracking
     prev_time = time.time()
     latency_ms = 0
@@ -120,71 +118,51 @@ def avvia_telecamera(coda_comandi):
             # Disegno manuale dello scheletro
             disegna_scheletro_manuale(frame, pose_landmarks)
             
-            # --- LOGICA DI CALIBRAZIONE GUIDATA ---
-            if in_calibrazione < 3:
-                overlay = frame.copy()
-                cv2.rectangle(overlay, (0, 0), (w, h), (0, 0, 0), -1)
-                cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
-                
-                if in_calibrazione == 0:
-                    testo = "BENVENUTO! Mettiti al centro"
-                    sottotesto = "Premi 'C' per iniziare la calibrazione"
-                elif in_calibrazione == 1:
-                    testo = "CALIBRAZIONE X: Muoviti a DX e SX"
-                    sottotesto = "Assicurati che il modello ti veda bene"
-                elif in_calibrazione == 2:
-                    testo = "CALIBRAZIONE Y: Fai un piccolo salto"
-                    sottotesto = "Premi 'C' quando hai finito"
-                
-                cv2.putText(frame, testo, (50, h//2), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                cv2.putText(frame, sottotesto, (50, h//2 + 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1)
+            # --- CLASSIFICAZIONE GESTI ---
+            gesto, confidence = predict_gesture(pose_landmarks)
             
-            else:
-                # --- CLASSIFICAZIONE GESTI ---
-                gesto, confidence = predict_gesture(pose_landmarks)
+            # FALLBACK SE MODELLO MANCANTE (Logica Manuale Semplice)
+            model_loaded = confidence > 0 or gesto != "unknown"
+            if not model_loaded:
+                # Logica basata su posizione naso e spalle (fallback)
+                naso = pose_landmarks[0]
+                spalla_dx = pose_landmarks[11]
+                spalla_sx = pose_landmarks[12]
+                y_spalle = (spalla_dx.y + spalla_sx.y) / 2
                 
-                # FALLBACK SE MODELLO MANCANTE (Logica Manuale Semplice)
-                model_loaded = confidence > 0 or gesto != "unknown"
-                if not model_loaded:
-                    # Logica basata su posizione naso e spalle (fallback)
-                    naso = pose_landmarks[0]
-                    spalla_dx = pose_landmarks[11]
-                    spalla_sx = pose_landmarks[12]
-                    y_spalle = (spalla_dx.y + spalla_sx.y) / 2
-                    
-                    if naso.x < 0.4: gesto = "sinistra"
-                    elif naso.x > 0.6: gesto = "destra"
-                    elif y_spalle < 0.45: gesto = "salto"
-                    else: gesto = "fermo"
-                    confidence = 0.5
+                if naso.x < 0.4: gesto = "sinistra"
+                elif naso.x > 0.6: gesto = "destra"
+                elif y_spalle < 0.45: gesto = "salto"
+                else: gesto = "fermo"
+                confidence = 0.5
 
-                # --- LOGICA DI COMANDO BASATA SU CLASSIFICATORE ---
-                if gesto == "sinistra":
-                    coda_comandi.put("SINISTRA")
-                    colore_feedback = (255, 0, 0)
-                elif gesto == "destra":
-                    coda_comandi.put("DESTRA")
-                    colore_feedback = (0, 0, 255)
-                elif gesto == "salto":
-                    coda_comandi.put("SALTO")
-                    colore_feedback = (0, 255, 255)
-                elif gesto == "sprint":
-                    coda_comandi.put("SPRINT")
-                    colore_feedback = (0, 165, 255)
-                else:
-                    coda_comandi.put("FERMO_X")
-                    coda_comandi.put("CAMMINA")
-                    colore_feedback = (0, 255, 0)
+            # --- LOGICA DI COMANDO BASATA SU CLASSIFICATORE ---
+            if gesto == "sinistra":
+                coda_comandi.put("SINISTRA")
+                colore_feedback = (255, 0, 0)
+            elif gesto == "destra":
+                coda_comandi.put("DESTRA")
+                colore_feedback = (0, 0, 255)
+            elif gesto == "salto":
+                coda_comandi.put("SALTO")
+                colore_feedback = (0, 255, 255)
+            elif gesto == "sprint":
+                coda_comandi.put("SPRINT")
+                colore_feedback = (0, 165, 255)
+            else:
+                coda_comandi.put("FERMO_X")
+                coda_comandi.put("CAMMINA")
+                colore_feedback = (0, 255, 0)
 
-                # Overlay HUD
-                cv2.rectangle(frame, (10, 10), (450, 150), (0, 0, 0), -1)
-                cv2.putText(frame, f"GESTO: {gesto.upper()}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, colore_feedback, 2)
-                if not model_loaded:
-                    cv2.putText(frame, "ATTENZIONE: MODELLO AI MANCANTE", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-                    cv2.putText(frame, "(Uso fallback manuale)", (20, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
-                else:
-                    cv2.putText(frame, f"CONF: {confidence:.2f}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
-                cv2.putText(frame, f"LATENCY: {latency_ms:.1f}ms", (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
+            # Overlay HUD
+            cv2.rectangle(frame, (10, 10), (450, 150), (0, 0, 0), -1)
+            cv2.putText(frame, f"GESTO: {gesto.upper()}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, colore_feedback, 2)
+            if not model_loaded:
+                cv2.putText(frame, "ATTENZIONE: MODELLO AI MANCANTE", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+                cv2.putText(frame, "(Uso fallback manuale)", (20, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+            else:
+                cv2.putText(frame, f"CONF: {confidence:.2f}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
+            cv2.putText(frame, f"LATENCY: {latency_ms:.1f}ms", (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
         else:
             # Messaggio se non rileva il corpo
             cv2.putText(frame, "NESSUN CORPO RILEVATO", (w//2 - 150, h - 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
@@ -197,10 +175,8 @@ def avvia_telecamera(coda_comandi):
         if key == ord('q'):
             break
         elif key == ord('c'):
-            in_calibrazione += 1
-            if in_calibrazione == 3:
-                print(">>> Calibrazione completata. Invio comando AVVIA_GIOCO...")
-                coda_comandi.put("AVVIA_GIOCO")
+            print(">>> Invio comando AVVIA_GIOCO...")
+            coda_comandi.put("AVVIA_GIOCO")
 
     telecamera.release()
     cv2.destroyAllWindows()

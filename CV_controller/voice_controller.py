@@ -6,26 +6,27 @@ import ssl
 import os
 
 # Fix per errore SSL durante il download del modello (Global SSL)
-ssl._create_default_https_context = ssl._create_unverified_context
+ssl._create_default_https_context = ssl._create_unverified_context # type: ignore
 
 # Fix per requests (usato internamente da vosk per scaricare il modello)
 try:
     import requests
-    from requests.packages.urllib3.exceptions import InsecureRequestWarning
-    requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+    import urllib3
+    from urllib3.exceptions import InsecureRequestWarning
+    urllib3.disable_warnings(InsecureRequestWarning)
     
     # Patch globale per disabilitare la verifica SSL in requests
     _orig_get = requests.get
     def _patched_get(*args, **kwargs):
         kwargs['verify'] = False
         return _orig_get(*args, **kwargs)
-    requests.get = _patched_get
+    requests.get = _patched_get # type: ignore
     
     _orig_request = requests.Session.request
     def _patched_request(self, *args, **kwargs):
         kwargs['verify'] = False
         return _orig_request(self, *args, **kwargs)
-    requests.Session.request = _patched_request
+    requests.Session.request = _patched_request # type: ignore
     print("🔧 Patch SSL applicata a 'requests'.")
 except ImportError:
     pass
