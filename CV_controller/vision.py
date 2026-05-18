@@ -108,13 +108,10 @@ def avvia_telecamera(coda_comandi):
 
         # Rilevamento pose
         results = detector.detect_for_video(mp_image, timestamp_ms)
-
         if results.pose_landmarks:
             pose_landmarks = results.pose_landmarks[0]
-            
             # Applicazione FILTRO
             pose_landmarks = pose_filter.filter(pose_landmarks)
-            
             # Disegno manuale dello scheletro
             disegna_scheletro_manuale(frame, pose_landmarks)
             
