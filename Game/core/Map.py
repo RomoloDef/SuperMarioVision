@@ -115,9 +115,7 @@ class Map(object):
         self.mobs.append(Goombas(736, 352, False))
         self.mobs.append(Goombas(1295, 352, True))
         self.mobs.append(Goombas(1632, 352, False))
-        self.mobs.append(Goombas(1672, 352, False))
         self.mobs.append(Goombas(5570, 352, False))
-        self.mobs.append(Goombas(5620, 352, False))
 
         self.map[21][8].bonus = 'mushroom'
         self.map[78][8].bonus = 'mushroom'
@@ -328,14 +326,10 @@ class Map(object):
 
         elif self.get_player().rect.x > 2460 and not self.is_mob_spawned[1]:
             self.spawn_goombas(3200, 352, False)
-            self.spawn_goombas(3250, 352, False)
             self.spawn_koopa(3400, 352, False)
             self.spawn_goombas(3700, 352, False)
-            self.spawn_goombas(3750, 352, False)
             self.spawn_goombas(4060, 352, False)
-            self.spawn_goombas(4110, 352, False)
             self.spawn_goombas(4190, 352, False)
-            self.spawn_goombas(4240, 352, False)
             self.is_mob_spawned[1] = True
 
     def player_death(self, core):

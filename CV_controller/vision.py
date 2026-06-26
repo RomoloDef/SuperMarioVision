@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 import time
+from collections import deque
 import os
 import urllib.request
 from mediapipe.tasks import python
@@ -34,6 +35,11 @@ POSE_CONNECTIONS = [
 ZONA_SINISTRA_MAX = 0.33   # Confine: da 0% a 33% → zona sinistra
 ZONA_DESTRA_MIN = 0.67     # Confine: da 67% a 100% → zona destra
 SOGLIA_BRACCIO = 0.10       # Distanza minima polso-spalla per "braccio alzato" (normalizzata)
+
+# --- 3. CONFIGURAZIONE SALTO FISICO ---
+SOGLIA_SALTO = 0.03         # Spostamento verticale minimo delle spalle per triggerare un salto
+COOLDOWN_SALTO_MS = 500     # Tempo minimo tra due salti consecutivi (ms)
+FINESTRA_SALTO = 10         # Numero di frame nel buffer per il calcolo del delta
 
 
 def download_model(model_path):
@@ -176,11 +182,14 @@ def avvia_telecamera(coda_comandi):
     latency_ms = 0
     conteggio_frame_totali = 0
 
-    # Edge detection per le braccia: tracciamo lo stato del frame precedente
-    braccio_dx_precedente = False  # Braccio destro (salto)
-    braccio_sx_precedente = False  # Braccio sinistro (sprint)
+    # Salto fisico: buffer circolare delle posizioni Y delle spalle
+    storico_y_spalle = deque(maxlen=FINESTRA_SALTO)
+    cooldown_salto = 0  # Timestamp dell'ultimo salto (ms)
 
-    print("Sistema AI Ibrido avviato (ML per Zone + Geometria per Braccia).")
+    # Edge detection per sprint (braccio sinistro)
+    braccio_sx_precedente = False
+
+    print("Sistema AI Ibrido avviato (ML per Zone + Salto Fisico + Sprint Braccio).")
 
     while True:
         loop_start = time.time()
@@ -200,7 +209,7 @@ def avvia_telecamera(coda_comandi):
         results = detector.detect_for_video(mp_image, timestamp_ms)
 
         zona_attiva = None
-        braccio_dx_alzato = False
+        salto_rilevato = False
         braccio_sx_alzato = False
         model_loaded = False
         confidence = 0.0
@@ -232,9 +241,26 @@ def avvia_telecamera(coda_comandi):
                     confidence = 0.5
 
             # ═══════════════════════════════════════════════════
-            # CANALE 2: BRACCIA (Regole Geometriche)
+            # CANALE 2: SALTO FISICO (Movimento Verticale)
             # ═══════════════════════════════════════════════════
-            braccio_dx_alzato = rileva_braccio_alzato(pose_landmarks, 'destro')
+            # Calcoliamo la media Y delle spalle (dopo flip: 11=DX utente, 12=SX utente)
+            y_spalle = (pose_landmarks[11].y + pose_landmarks[12].y) / 2
+            storico_y_spalle.append(y_spalle)
+
+            if len(storico_y_spalle) >= 5:
+                # Confrontiamo la posizione attuale con la media dei frame precedenti
+                valori_precedenti = list(storico_y_spalle)[:-1]  # Tutti tranne l'ultimo
+                media_precedente = sum(valori_precedenti) / len(valori_precedenti)
+                delta = media_precedente - y_spalle  # Positivo = corpo sale (y diminuisce)
+
+                tempo_corrente = time.time() * 1000
+                if delta > SOGLIA_SALTO and (tempo_corrente - cooldown_salto) > COOLDOWN_SALTO_MS:
+                    salto_rilevato = True
+                    cooldown_salto = tempo_corrente
+
+            # ═══════════════════════════════════════════════════
+            # CANALE 3: SPRINT (Braccio Sinistro)
+            # ═══════════════════════════════════════════════════
             braccio_sx_alzato = rileva_braccio_alzato(pose_landmarks, 'sinistro')
 
             # --- INVIO COMANDI MOVIMENTO (ogni frame) ---
@@ -245,19 +271,17 @@ def avvia_telecamera(coda_comandi):
             else:  # centro → fermo
                 coda_comandi.put("FERMO_X")
 
-            # --- INVIO COMANDI BRACCIA (edge detection) ---
-            # Salto: braccio destro, solo transizione basso→alto (impulso singolo)
-            if braccio_dx_alzato and not braccio_dx_precedente:
+            # --- INVIO COMANDO SALTO (impulso singolo con cooldown) ---
+            if salto_rilevato:
                 coda_comandi.put("SALTO")
 
-            # Sprint: braccio sinistro, transizioni in entrambe le direzioni
+            # --- INVIO COMANDI SPRINT (edge detection braccio sinistro) ---
             if braccio_sx_alzato and not braccio_sx_precedente:
                 coda_comandi.put("SPRINT")
             elif not braccio_sx_alzato and braccio_sx_precedente:
                 coda_comandi.put("CAMMINA")
 
             # Aggiorna stato precedente per il prossimo frame
-            braccio_dx_precedente = braccio_dx_alzato
             braccio_sx_precedente = braccio_sx_alzato
 
         # --- DISEGNO ZONE (sempre visibili, anche senza corpo rilevato) ---
@@ -281,14 +305,14 @@ def avvia_telecamera(coda_comandi):
                        cv2.FONT_HERSHEY_SIMPLEX, 0.8,
                        colore_zona.get(zona_attiva, (255, 255, 255)), 2)
 
-            # Stato braccia
-            colore_dx = (0, 255, 255) if braccio_dx_alzato else (120, 120, 120)
+            # Stato salto e sprint
+            colore_salto = (0, 255, 255) if salto_rilevato else (120, 120, 120)
             colore_sx = (0, 165, 255) if braccio_sx_alzato else (120, 120, 120)
-            testo_dx = "SALTO!" if braccio_dx_alzato else "---"
+            testo_salto = "SALTO!" if salto_rilevato else "---"
             testo_sx = "SPRINT!" if braccio_sx_alzato else "---"
-            cv2.putText(frame, f"Braccio DX: {testo_dx}", (20, 68),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, colore_dx, 1)
-            cv2.putText(frame, f"Braccio SX: {testo_sx}", (20, 93),
+            cv2.putText(frame, f"Salto: {testo_salto}", (20, 68),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, colore_salto, 1)
+            cv2.putText(frame, f"Sprint: {testo_sx}", (20, 93),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, colore_sx, 1)
 
             # Info modello ML
