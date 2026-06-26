@@ -10,15 +10,66 @@ from mediapipe.tasks.python import vision
 MODEL_PATH = 'pose_landmarker_lite.task'
 OUTPUT_CSV = 'gesture_dataset.csv'
 
-# Gesti da raccogliere e quanti frame per gesto
-GESTI = ['fermo', 'sinistra', 'destra', 'salto', 'sprint']
+# Gesti da raccogliere — corrispondono alle 3 zone di gioco
+GESTI = ['sinistra', 'centro', 'destra']
 FRAMES_PER_GESTO = 300   # ~10 secondi a 30fps — puoi aumentare
 SECONDI_PREPARAZIONE = 3  # Tempo per mettersi in posizione prima della registrazione
+
+# Configurazione zone (stessi valori di vision.py)
+ZONA_SINISTRA_MAX = 0.33
+ZONA_DESTRA_MIN = 0.67
 
 # Colonne del CSV
 HEADER = ['label']
 for i in range(33):
     HEADER += [f'x{i}', f'y{i}', f'z{i}', f'v{i}']
+
+
+def disegna_zone(frame, zona_target=None):
+    """
+    Disegna le 3 zone colorate sulla finestra della telecamera.
+    Evidenzia la zona_target (il gesto che si sta raccogliendo).
+    """
+    h, w, _ = frame.shape
+    confine_sx = int(w * ZONA_SINISTRA_MAX)
+    confine_dx = int(w * ZONA_DESTRA_MIN)
+
+    # Colori zone (BGR)
+    COLORE_SX = (255, 150, 50)     # Blu chiaro
+    COLORE_CENTRO = (50, 220, 50)  # Verde
+    COLORE_DX = (50, 50, 255)      # Rosso
+
+    # Overlay base per tutte le zone
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (0, 0), (confine_sx, h), COLORE_SX, -1)
+    cv2.rectangle(overlay, (confine_sx, 0), (confine_dx, h), COLORE_CENTRO, -1)
+    cv2.rectangle(overlay, (confine_dx, 0), (w, h), COLORE_DX, -1)
+    cv2.addWeighted(overlay, 0.08, frame, 0.92, 0, frame)
+
+    # Evidenzia la zona target
+    if zona_target:
+        overlay_attivo = frame.copy()
+        if zona_target == 'sinistra':
+            cv2.rectangle(overlay_attivo, (0, 0), (confine_sx, h), COLORE_SX, -1)
+        elif zona_target == 'centro':
+            cv2.rectangle(overlay_attivo, (confine_sx, 0), (confine_dx, h), COLORE_CENTRO, -1)
+        elif zona_target == 'destra':
+            cv2.rectangle(overlay_attivo, (confine_dx, 0), (w, h), COLORE_DX, -1)
+        cv2.addWeighted(overlay_attivo, 0.18, frame, 0.82, 0, frame)
+
+    # Linee di confine
+    cv2.line(frame, (confine_sx, 0), (confine_sx, h), (255, 255, 255), 2)
+    cv2.line(frame, (confine_dx, 0), (confine_dx, h), (255, 255, 255), 2)
+
+    # Etichette zone
+    label_y = h - 15
+    cv2.putText(frame, "<< SINISTRA", (10, label_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    centro_x = confine_sx + (confine_dx - confine_sx) // 2 - 40
+    cv2.putText(frame, "CENTRO", (centro_x, label_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    cv2.putText(frame, "DESTRA >>", (confine_dx + 10, label_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
 
 def inizializza_detector():
@@ -76,15 +127,17 @@ def raccolta_gesto(detector, telecamera, label, frame_counter_start):
         if tempo_rimasto <= 0:
             break
 
-        # Overlay countdown
+        # Overlay countdown con zone visibili
         overlay = frame.copy()
         cv2.rectangle(overlay, (0, 0), (frame.shape[1], frame.shape[0]), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
-        cv2.putText(frame, f"Gesto: {label.upper()}", (50, 80),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 3)
+        # Disegna le zone — evidenzia quella dove il giocatore deve posizionarsi
+        disegna_zone(frame, label)
+        cv2.putText(frame, f"Posizionati nella zona: {label.upper()}", (50, 80),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 3)
         cv2.putText(frame, f"Inizio tra: {int(tempo_rimasto) + 1}s", (50, 150),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2)
-        cv2.putText(frame, "Premi Q per uscire", (50, frame.shape[0] - 30),
+        cv2.putText(frame, "Premi Q per uscire", (50, frame.shape[0] - 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 1)
         cv2.imshow('Raccolta Dati - SuperMarioVision', frame)
 
@@ -114,17 +167,20 @@ def raccolta_gesto(detector, telecamera, label, frame_counter_start):
             righe.append(landmark_to_row(label, landmarks))
             frame_raccolti += 1
 
+        # Disegna le zone — evidenzia la zona target
+        disegna_zone(frame, label)
+
         # HUD di registrazione
         progresso = int((frame_raccolti / FRAMES_PER_GESTO) * (frame.shape[1] - 100))
-        cv2.rectangle(frame, (50, frame.shape[0] - 60),
-                      (frame.shape[1] - 50, frame.shape[0] - 35), (50, 50, 50), -1)
-        cv2.rectangle(frame, (50, frame.shape[0] - 60),
-                      (50 + progresso, frame.shape[0] - 35), (0, 220, 0), -1)
+        cv2.rectangle(frame, (50, frame.shape[0] - 70),
+                      (frame.shape[1] - 50, frame.shape[0] - 45), (50, 50, 50), -1)
+        cv2.rectangle(frame, (50, frame.shape[0] - 70),
+                      (50 + progresso, frame.shape[0] - 45), (0, 220, 0), -1)
         cv2.putText(frame, f"REC  {label.upper()}", (50, 50),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
         cv2.putText(frame, f"{frame_raccolti}/{FRAMES_PER_GESTO} frame", (50, 100),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-        cv2.putText(frame, "Premi Q per uscire", (50, frame.shape[0] - 70),
+        cv2.putText(frame, "Premi Q per uscire", (50, frame.shape[0] - 80),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 1)
         cv2.imshow('Raccolta Dati - SuperMarioVision', frame)
 

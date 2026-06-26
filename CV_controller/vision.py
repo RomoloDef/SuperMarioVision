@@ -30,6 +30,12 @@ POSE_CONNECTIONS = [
     (23, 25), (24, 26), (25, 27), (26, 28)          # Gambe
 ]
 
+# --- 2. CONFIGURAZIONE ZONE E BRACCIA ---
+ZONA_SINISTRA_MAX = 0.33   # Confine: da 0% a 33% → zona sinistra
+ZONA_DESTRA_MIN = 0.67     # Confine: da 67% a 100% → zona destra
+SOGLIA_BRACCIO = 0.10       # Distanza minima polso-spalla per "braccio alzato" (normalizzata)
+
+
 def download_model(model_path):
     """Scarica il modello pre-addestrato se non presente."""
     if not os.path.exists(model_path):
@@ -40,6 +46,7 @@ def download_model(model_path):
             print("✅ Modello scaricato con successo!")
         except Exception as e:
             print(f"❌ Errore durante il download: {e}")
+
 
 def disegna_scheletro_manuale(frame, landmarks):
     """Disegna manualmente i punti e le connessioni della posa usando solo OpenCV."""
@@ -63,8 +70,89 @@ def disegna_scheletro_manuale(frame, landmarks):
                 cx, cy = int(lm.x * w), int(lm.y * h)
                 cv2.circle(frame, (cx, cy), 5, (255, 255, 255), -1)
 
+
+def disegna_zone(frame, zona_attiva=None):
+    """
+    Disegna le 3 zone colorate semi-trasparenti sulla finestra della telecamera.
+    La zona attiva viene evidenziata con opacità maggiore.
+    
+    Zone:
+        - Sinistra (0% - 33%): blu
+        - Centro (33% - 67%): verde
+        - Destra (67% - 100%): rosso
+    """
+    h, w, _ = frame.shape
+    confine_sx = int(w * ZONA_SINISTRA_MAX)
+    confine_dx = int(w * ZONA_DESTRA_MIN)
+
+    # Colori zone (BGR)
+    COLORE_SX = (255, 150, 50)     # Blu chiaro
+    COLORE_CENTRO = (50, 220, 50)  # Verde
+    COLORE_DX = (50, 50, 255)      # Rosso
+
+    # Disegna tutte le zone con opacità base bassa
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (0, 0), (confine_sx, h), COLORE_SX, -1)
+    cv2.rectangle(overlay, (confine_sx, 0), (confine_dx, h), COLORE_CENTRO, -1)
+    cv2.rectangle(overlay, (confine_dx, 0), (w, h), COLORE_DX, -1)
+    cv2.addWeighted(overlay, 0.08, frame, 0.92, 0, frame)
+
+    # Evidenzia la zona attiva con opacità extra
+    if zona_attiva:
+        overlay_attivo = frame.copy()
+        if zona_attiva == 'sinistra':
+            cv2.rectangle(overlay_attivo, (0, 0), (confine_sx, h), COLORE_SX, -1)
+        elif zona_attiva == 'centro':
+            cv2.rectangle(overlay_attivo, (confine_sx, 0), (confine_dx, h), COLORE_CENTRO, -1)
+        elif zona_attiva == 'destra':
+            cv2.rectangle(overlay_attivo, (confine_dx, 0), (w, h), COLORE_DX, -1)
+        cv2.addWeighted(overlay_attivo, 0.18, frame, 0.82, 0, frame)
+
+    # Linee di confine bianche tra le zone
+    cv2.line(frame, (confine_sx, 0), (confine_sx, h), (255, 255, 255), 2)
+    cv2.line(frame, (confine_dx, 0), (confine_dx, h), (255, 255, 255), 2)
+
+    # Etichette zone in basso
+    label_y = h - 15
+    cv2.putText(frame, "<< SINISTRA", (10, label_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    centro_x = confine_sx + (confine_dx - confine_sx) // 2 - 40
+    cv2.putText(frame, "FERMO", (centro_x, label_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    cv2.putText(frame, "DESTRA >>", (confine_dx + 10, label_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+
+def rileva_braccio_alzato(landmarks, lato):
+    """
+    Rileva se un braccio è alzato confrontando la posizione Y del polso con la spalla.
+    
+    Parametri:
+        landmarks: lista dei 33 landmark di MediaPipe
+        lato: 'destro' o 'sinistro' (dal punto di vista dell'UTENTE)
+    
+    Nota: dopo cv2.flip(frame, 1), i landmark MediaPipe sono invertiti:
+        - Braccio DESTRO utente → landmark 11 (spalla), 15 (polso)
+        - Braccio SINISTRO utente → landmark 12 (spalla), 16 (polso)
+    
+    Restituisce True se il polso è significativamente sopra la spalla.
+    """
+    if lato == 'destro':
+        spalla = landmarks[11]  # MP: LEFT_SHOULDER → Spalla DX utente (dopo flip)
+        polso = landmarks[15]   # MP: LEFT_WRIST → Polso DX utente (dopo flip)
+    else:
+        spalla = landmarks[12]  # MP: RIGHT_SHOULDER → Spalla SX utente (dopo flip)
+        polso = landmarks[16]   # MP: RIGHT_WRIST → Polso SX utente (dopo flip)
+
+    # y=0 è in alto, y=1 è in basso → polso sopra la spalla = polso.y < spalla.y
+    # Verifichiamo anche la visibilità per evitare falsi positivi
+    return (polso.y < (spalla.y - SOGLIA_BRACCIO) 
+            and polso.visibility > 0.5 
+            and spalla.visibility > 0.5)
+
+
 def avvia_telecamera(coda_comandi):
-    # --- 2. CONFIGURAZIONE MEDIAPIPE 0.10.35 (TASKS API) ---
+    # --- CONFIGURAZIONE MEDIAPIPE 0.10.35 (TASKS API) ---
     model_path = 'pose_landmarker_lite.task'
     download_model(model_path)
 
@@ -81,16 +169,18 @@ def avvia_telecamera(coda_comandi):
     detector = vision.PoseLandmarker.create_from_options(options)
     telecamera = cv2.VideoCapture(0)
     
-    # Inizializza filtro
+    # Inizializza filtro di Kalman per la stabilizzazione
     pose_filter = PoseFilter(filter_type='kalman')
 
-    # --- VARIABILI DI STATISTICHE E LATENZA ---
-    # Latency tracking
-    prev_time = time.time()
+    # --- VARIABILI DI STATO ---
     latency_ms = 0
     conteggio_frame_totali = 0
 
-    print("Sistema AI (v0.10.35) avviato con Classificatore Gestures.")
+    # Edge detection per le braccia: tracciamo lo stato del frame precedente
+    braccio_dx_precedente = False  # Braccio destro (salto)
+    braccio_sx_precedente = False  # Braccio sinistro (sprint)
+
+    print("Sistema AI Ibrido avviato (ML per Zone + Geometria per Braccia).")
 
     while True:
         loop_start = time.time()
@@ -106,67 +196,118 @@ def avvia_telecamera(coda_comandi):
         conteggio_frame_totali += 1
         timestamp_ms = conteggio_frame_totali * 33 
 
-        # Rilevamento pose
+        # --- RILEVAMENTO POSE ---
         results = detector.detect_for_video(mp_image, timestamp_ms)
+
+        zona_attiva = None
+        braccio_dx_alzato = False
+        braccio_sx_alzato = False
+        model_loaded = False
+        confidence = 0.0
+
         if results.pose_landmarks:
             pose_landmarks = results.pose_landmarks[0]
-            # Applicazione FILTRO
+            # Applicazione filtro di Kalman per ridurre il jitter
             pose_landmarks = pose_filter.filter(pose_landmarks)
-            # Disegno manuale dello scheletro
-            disegna_scheletro_manuale(frame, pose_landmarks)
-            
-            # --- CLASSIFICAZIONE GESTI ---
+
+            # ═══════════════════════════════════════════════════
+            # CANALE 1: ZONA DI MOVIMENTO (Classificatore ML)
+            # ═══════════════════════════════════════════════════
             gesto, confidence = predict_gesture(pose_landmarks)
-            
-            # FALLBACK SE MODELLO MANCANTE (Logica Manuale Semplice)
             model_loaded = confidence > 0 or gesto != "unknown"
-            if not model_loaded:
-                # Logica basata su posizione naso e spalle (fallback)
+
+            if model_loaded and gesto in ('sinistra', 'centro', 'destra'):
+                # Il classificatore ML ha riconosciuto una zona valida
+                zona_attiva = gesto
+            else:
+                # Fallback geometrico: usiamo la posizione X del naso
                 naso = pose_landmarks[0]
-                spalla_dx = pose_landmarks[11]
-                spalla_sx = pose_landmarks[12]
-                y_spalle = (spalla_dx.y + spalla_sx.y) / 2
-                
-                if naso.x < 0.4: gesto = "sinistra"
-                elif naso.x > 0.6: gesto = "destra"
-                elif y_spalle < 0.45: gesto = "salto"
-                else: gesto = "fermo"
-                confidence = 0.5
+                if naso.x < ZONA_SINISTRA_MAX:
+                    zona_attiva = 'sinistra'
+                elif naso.x > ZONA_DESTRA_MIN:
+                    zona_attiva = 'destra'
+                else:
+                    zona_attiva = 'centro'
+                if not model_loaded:
+                    confidence = 0.5
 
-            # --- LOGICA DI COMANDO BASATA SU CLASSIFICATORE ---
-            if gesto == "sinistra":
+            # ═══════════════════════════════════════════════════
+            # CANALE 2: BRACCIA (Regole Geometriche)
+            # ═══════════════════════════════════════════════════
+            braccio_dx_alzato = rileva_braccio_alzato(pose_landmarks, 'destro')
+            braccio_sx_alzato = rileva_braccio_alzato(pose_landmarks, 'sinistro')
+
+            # --- INVIO COMANDI MOVIMENTO (ogni frame) ---
+            if zona_attiva == 'sinistra':
                 coda_comandi.put("SINISTRA")
-                colore_feedback = (255, 0, 0)
-            elif gesto == "destra":
+            elif zona_attiva == 'destra':
                 coda_comandi.put("DESTRA")
-                colore_feedback = (0, 0, 255)
-            elif gesto == "salto":
-                coda_comandi.put("SALTO")
-                colore_feedback = (0, 255, 255)
-            elif gesto == "sprint":
-                coda_comandi.put("SPRINT")
-                colore_feedback = (0, 165, 255)
-            else:
+            else:  # centro → fermo
                 coda_comandi.put("FERMO_X")
-                coda_comandi.put("CAMMINA")
-                colore_feedback = (0, 255, 0)
 
-            # Overlay HUD
-            cv2.rectangle(frame, (10, 10), (450, 150), (0, 0, 0), -1)
-            cv2.putText(frame, f"GESTO: {gesto.upper()}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, colore_feedback, 2)
+            # --- INVIO COMANDI BRACCIA (edge detection) ---
+            # Salto: braccio destro, solo transizione basso→alto (impulso singolo)
+            if braccio_dx_alzato and not braccio_dx_precedente:
+                coda_comandi.put("SALTO")
+
+            # Sprint: braccio sinistro, transizioni in entrambe le direzioni
+            if braccio_sx_alzato and not braccio_sx_precedente:
+                coda_comandi.put("SPRINT")
+            elif not braccio_sx_alzato and braccio_sx_precedente:
+                coda_comandi.put("CAMMINA")
+
+            # Aggiorna stato precedente per il prossimo frame
+            braccio_dx_precedente = braccio_dx_alzato
+            braccio_sx_precedente = braccio_sx_alzato
+
+        # --- DISEGNO ZONE (sempre visibili, anche senza corpo rilevato) ---
+        disegna_zone(frame, zona_attiva)
+
+        # --- DISEGNO SCHELETRO E HUD ---
+        if results.pose_landmarks:
+            disegna_scheletro_manuale(frame, pose_landmarks)
+
+            # HUD — Pannello informativo in alto a sinistra
+            cv2.rectangle(frame, (10, 10), (380, 125), (0, 0, 0), -1)
+            cv2.rectangle(frame, (10, 10), (380, 125), (80, 80, 80), 1)
+
+            # Zona attiva con colore corrispondente
+            colore_zona = {
+                'sinistra': (255, 150, 50),
+                'centro': (50, 220, 50),
+                'destra': (50, 50, 255)
+            }
+            cv2.putText(frame, f"ZONA: {zona_attiva.upper()}", (20, 40),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                       colore_zona.get(zona_attiva, (255, 255, 255)), 2)
+
+            # Stato braccia
+            colore_dx = (0, 255, 255) if braccio_dx_alzato else (120, 120, 120)
+            colore_sx = (0, 165, 255) if braccio_sx_alzato else (120, 120, 120)
+            testo_dx = "SALTO!" if braccio_dx_alzato else "---"
+            testo_sx = "SPRINT!" if braccio_sx_alzato else "---"
+            cv2.putText(frame, f"Braccio DX: {testo_dx}", (20, 68),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, colore_dx, 1)
+            cv2.putText(frame, f"Braccio SX: {testo_sx}", (20, 93),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, colore_sx, 1)
+
+            # Info modello ML
             if not model_loaded:
-                cv2.putText(frame, "ATTENZIONE: MODELLO AI MANCANTE", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-                cv2.putText(frame, "(Uso fallback manuale)", (20, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+                cv2.putText(frame, "[Fallback geometrico]", (20, 115),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
             else:
-                cv2.putText(frame, f"CONF: {confidence:.2f}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
-            cv2.putText(frame, f"LATENCY: {latency_ms:.1f}ms", (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
+                cv2.putText(frame, f"ML conf: {confidence:.2f}", (20, 115),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
         else:
             # Messaggio se non rileva il corpo
-            cv2.putText(frame, "NESSUN CORPO RILEVATO", (w//2 - 150, h - 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+            cv2.putText(frame, "NESSUN CORPO RILEVATO", (w // 2 - 180, h // 2),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
-        # Calcolo latenza
+        # Latenza (sempre visibile, in alto a destra)
         latency_ms = (time.time() - loop_start) * 1000
-        
+        cv2.putText(frame, f"LAT: {latency_ms:.0f}ms", (w - 140, 30),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
         cv2.imshow('SuperMarioVision - AI Controller', frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
