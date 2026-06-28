@@ -37,6 +37,8 @@ class MenuManager(object):
         elif self.currentGameState == 'Game':
             core.get_map().render(core)
             core.get_map().get_ui().render(core)
+            if getattr(core, 'is_paused', False):
+                core.pause_text.render(core)
 
         pg.display.update()
 

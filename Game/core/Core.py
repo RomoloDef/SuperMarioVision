@@ -9,6 +9,7 @@ from core.Camera import Camera
 from core.Sound import Sound
 from core.Event import Event
 from ui.MenuManager import MenuManager
+from ui.Text import Text
 
 
 class Core(object):
@@ -40,6 +41,9 @@ class Core(object):
         self.coda_ai = coda_ai
         self.timer_salto_in_alto = 0
         self.timer_fuoco_ai = 0
+        
+        self.is_paused = False
+        self.pause_text = Text('PAUSED', 32, (WINDOW_W / 2, WINDOW_H / 2))
 
     def main_loop(self):
         while self.run:
@@ -104,6 +108,12 @@ class Core(object):
             self.keyFire = True
             self.timer_fuoco_ai = pg.time.get_ticks()
 
+        # Pausa / Riprendi
+        elif comando == "PAUSA":
+            self.is_paused = True
+        elif comando == "RIPRENDI":
+            self.is_paused = False
+
     def input_player(self):
         """
         Gestisce l'input della tastiera durante il gioco.
@@ -130,6 +140,9 @@ class Core(object):
                     self.get_mm().start_loading()
 
     def update(self):
+        if self.is_paused:
+            return
+
         self.get_mm().update(self)
         
         # Gestione timer per rilascio automatico tasti AI

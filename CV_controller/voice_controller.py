@@ -38,8 +38,7 @@ def ascolta_microfono(coda_comandi):
     
     # --- L'OTTIMIZZAZIONE SUL VOCABOLARIO: 
     # Inserendo solo poche parole, non deve andare a cercare e a confrontarle con tutte quelle del modello ---
-    
-    vocabolario = '["pausa", "fuoco", "spara", "avvia", "gioco", "start", "[unk]"]'
+    vocabolario = '["pausa", "fuoco", "spara", "avvia", "gioco", "start", "riprendi", "continua", "[unk]"]'
     
     # Passiamo il vocabolario al riconoscitore
     riconoscitore = KaldiRecognizer(modello, 16000, vocabolario)
@@ -48,8 +47,7 @@ def ascolta_microfono(coda_comandi):
     
     def callback_microfono(indata, frames, time, status):
         coda_audio_interna.put(bytes(indata))
-
-    print("🎤 Microfono AI in ascolto... (Comandi ottimizzati: 'Pausa', 'Fuoco', 'Spara', 'Avvia gioco')")
+    print("🎤 Microfono AI in ascolto... (Comandi ottimizzati: 'Pausa', 'Riprendi', 'Fuoco', 'Spara', 'Avvia gioco')")
     
     # --- L'OTTIMIZZAZIONE SUL BLOCKSIZE:
     # Un blocksize più piccolo permette di processare l'audio più frequentemente, riducendo la latenza di riconoscimento.
@@ -79,8 +77,13 @@ def ascolta_microfono(coda_comandi):
                 coda_comandi.put("FUOCO")
                 riconoscitore.Reset()
                 
+            elif "riprendi" in testo or "continua" in testo:
+                print(">>> Comando Vocale Riconosciuto: RIPRENDI ▶️")
+                coda_comandi.put("RIPRENDI")
+                riconoscitore.Reset()
+                
             elif "avvia gioco" in testo or "start" in testo:
-                print(">>> Comando Vocale Riconosciuto: AVVIA GIOCO ▶️")
+                print(">>> Comando Vocale Riconosciuto: AVVIA GIOCO 🎮")
                 coda_comandi.put("AVVIA_GIOCO")
                 riconoscitore.Reset()
                     
