@@ -1,0 +1,262 @@
+\documentclass[10pt,twocolumn,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{url}
+\usepackage{float}
+
+\geometry{
+	a4paper,
+	left=1.6cm,
+	right=1.6cm,
+	top=1.8cm,
+	bottom=2.0cm,
+	columnsep=0.7cm
+}
+
+\setlength{\parindent}{0.35cm}
+\setlength{\parskip}{0pt}
+
+\title{\textbf{Super Mario Vision}}
+
+\author{
+	Matteo Geusa, Romolo Deffereria\\
+	Bachelor's Degree Programme in Applied Computer Science and Artificial Intelligence (ACSAI)\\
+	Course: AI-LAB -- Computer Vision, Signal Processing, and Natural Language Processing\\
+	Department of Computer Science, Sapienza University of Rome\\
+	Matricola: 2058638, 2114887\\
+	\texttt{geusa.2058638@studenti.uniroma1.it}\\
+	\texttt{deffereria.2114887@studenti.uniroma1.it}\\
+}
+
+\date{}
+
+\begin{document}
+	
+	\maketitle
+	
+	\begin{abstract}
+    This report presents "SuperMarioVision", a multimodal AI controller developed for the AI-LAB course, designed to play a 2D platformer game without physical devices. The project explores Natural User Interfaces (NUI) in highly reactive environments by combining Computer Vision for full-body tracking (via MediaPipe) and Speech Recognition for voice commands (via Vosk). Initially, a pure Machine Learning approach was tested to classify all in-game actions, which resulted in high cognitive latency and poor playability. To address this, we propose a hybrid control pipeline. A custom dataset was collected to train an ML classifier that tracks the player's spatial position to manage continuous movement (left, center, right zones), while geometric heuristics are applied to raw pose landmarks (e.g., vertical shoulder displacement) to trigger low-latency, instinctual actions like physical jumping. Qualitative and quantitative evaluations demonstrate that this hybrid approach drastically reduces input lag and improves overall user experience compared to a baseline pure-classification method. The main contribution of this work is the critical analysis and adaptation of gesture recognition pipelines to meet the strict real-time constraints of action-oriented video games.
+    \end{abstract}
+
+    \vspace{0.5cm}
+    
+    \textbf{Keywords:} artificial intelligence; computer vision; signal processing; human-computer interaction; pose estimation; multimodal interfaces; gesture recognition; real-time gaming.
+	
+	\section{Introduction}
+	
+	The evolution of Human-Computer Interaction (HCI) is increasingly leaning towards Natural User Interfaces (NUI), where physical devices like keyboards and gamepads are replaced by body movements, gestures, and voice. In this context, video games represent a uniquely challenging benchmark for Artificial Intelligence applications. Fast-paced action games, such as the classic 2D platformer \textit{Super Mario Bros}, impose strict constraints on input latency and require highly intuitive control mappings to remain playable. Developing an AI-based vision controller for such environments requires solving a complex trade-off between the accuracy of the recognition model and the real-time responsiveness expected by the user.
+
+    A common limitation of existing computer vision approaches for gaming is the over-reliance on pure Machine Learning (ML) classifiers to detect discrete, static gestures (e.g., raising an arm to trigger a jump). While ML models excel at recognizing complex poses, applying them to every single in-game action introduces significant cognitive and computational overhead. Waiting for a user to perform an unnatural gesture, combined with the inference time of the classifier, inevitably causes input lag, disrupting the gameplay flow and degrading the overall user experience.
+    
+    To address these challenges, this project introduces \textit{SuperMarioVision}, a multimodal AI controller that allows a user to play a custom implementation of \textit{Super Mario Bros} using only a webcam and a microphone. The project aims to improve upon traditional gesture-based controllers by testing and analyzing a control scheme that feels natural, highly responsive, and robust to the fast-paced nature of platformer games.
+
+    \begin{figure}[htbp]
+        \centering
+        \includegraphics[width=\columnwidth]{Gioco.png}
+        \caption{Gameplay screenshot of the custom \textit{Super Mario Bros} implementation controlled via the \textit{SuperMarioVision} multimodal interface.}
+        \label{fig:game_screenshot}
+    \end{figure}
+    
+    Our main contribution consists of the design and implementation of a \textit{hybrid} control architecture. During the initial development phase, we trained a 5-class ML model to handle all in-game actions; however, this proved to be unplayable due to latency and the physical fatigue caused by unnatural gestures. Consequently, we redesigned the pipeline to decouple continuous movement from immediate actions. We now employ an ML classifier exclusively for robust spatial tracking, dividing the camera frame into three physical movement zones (Left, Center, Right). Simultaneously, we bypass the classifier for reactive actions, computing deterministic geometric heuristics directly on the raw pose landmarks (e.g., calculating the vertical delta of the shoulders to detect an actual, physical jump). This hybrid vision approach is further augmented by a Speech Recognition module (Vosk) to manage discrete game states seamlessly. 
+    
+    The remainder of this report is organized as follows. Section 2 discusses the related work in pose estimation and gesture recognition. Section 3 details the proposed methodology, outlining the multimodal and hybrid architecture. Section 4 presents the experimental setup, including the dataset collection, followed by a critical discussion of the results and the latency improvements. Finally, Section 5 draws the conclusions and outlines potential future developments.
+
+	
+	\section{Related Work}
+	
+	The challenge of replacing traditional game controllers with Natural User Interfaces (NUI) has been extensively explored in the literature, primarily focusing on human pose estimation and gesture recognition. Early breakthroughs in this domain heavily relied on specialized hardware, such as depth cameras and RGB-D sensors. A foundational work by Shotton et al.~\cite{shotton2011kinect} introduced real-time human pose recognition using the Microsoft Kinect sensor, establishing a standard for body-controlled gaming. While highly accurate, these systems required expensive, dedicated hardware and controlled indoor environments to function properly. Recent advancements in Deep Learning have shifted the paradigm towards monocular RGB cameras, making full-body tracking accessible on standard consumer webcams. This transition is largely driven by frameworks such as MediaPipe~\cite{lugaresi2019mediapipe} and its underlying pose estimation architecture, BlazePose~\cite{bazarevsky2020blazepose}. These models extract 3D skeletal landmarks efficiently on-device without requiring depth sensors, democratizing the development of vision-based interfaces. Similarly, in the audio domain, toolkits like Kaldi~\cite{povey2011kaldi}---the core engine behind the Vosk API used in our system---have enabled robust, offline speech recognition that can be seamlessly integrated into interactive applications. Driven by these frameworks, recent state-of-the-art research has focused on developing controller-less gaming experiences. For instance, Tan et al.~\cite{tan2022gesture} demonstrated the use of MediaPipe for online real-time gameplay by mapping hand gestures directly to keyboard inputs. Other recent works in IEEE and ACM venues explore similar pipelines, typically feeding MediaPipe keypoints into Machine Learning (ML) classifiers to recognize specific commands. However, the literature frequently highlights a critical limitation: relying entirely on an ML classifier for every in-game action introduces significant inference latency. In fast-paced games, waiting for a user to perform a static gesture and for the model to classify it results in severe input lag, making the game frustrating or unplayable. \textbf{Our Contribution:} \textit{SuperMarioVision} differentiates itself from the current state-of-the-art in two key aspects. First, unlike purely visual systems, our approach is \textit{multimodal}. By integrating speech recognition (Vosk) for discrete state commands (e.g., pausing the game, shooting a fireball), we significantly reduce the visual processing overhead and the user's cognitive load. Second, to solve the latency issues typical of pure ML pipelines, we propose a \textit{hybrid} architecture. We constrain the ML classifier exclusively to robust spatial tracking (continuous movement zones), while utilizing fast, deterministic geometric heuristics on the raw BlazePose landmarks for immediate actions (such as calculating the vertical shoulder delta for physical jumping). This hybrid design bridges the gap between modern AI pose estimation and the extreme responsiveness demanded by platformer games.
+
+	
+	All external resources must be cited properly, including papers, datasets, GitHub repositories, tutorials, pretrained models, and libraries when they are central to the project. For example, students may cite foundational deep learning work~\cite{lecun2015deep}, convolutional architectures~\cite{he2016resnet}, transformer-based models~\cite{vaswani2017attention}, or task-specific references when appropriate.
+	
+	\section{Methodology}
+
+	This section details the proposed \textit{SuperMarioVision} system, a multimodal and hybrid architecture designed to translate the user's body movements and voice commands into real-time game inputs. The system is organized into two parallel, asynchronous threads: a \textbf{Vision Thread} and a \textbf{Voice Thread}, both of which write to a shared thread-safe command queue that is consumed by the game engine. The overall pipeline is illustrated in Fig.~\ref{fig:architecture}.
+
+\begin{figure*}[t]
+	\centering
+	\includegraphics[width=0.95\textwidth]{01.png}
+	\caption{Overview of the SuperMarioVision hybrid pipeline. The Vision Thread acquires raw RGB frames from a standard webcam, applies MediaPipe BlazePose for skeletal landmark extraction, and routes the normalized landmark data to three independent parallel channels: (1) an ML classifier for spatial zone detection (movement), (2) a geometric heuristic on the vertical shoulder delta for physical jump detection, and (3) a wrist-to-shoulder geometric heuristic for sprint detection. The Voice Thread independently processes microphone audio with the Vosk speech recognizer, mapping keywords to discrete game-state commands. All channels converge into a shared command queue consumed by the game engine at runtime.}
+	\label{fig:architecture}
+\end{figure*}
+
+	\subsection{Input and Preprocessing}
+
+	The system's visual input is a standard RGB video stream captured at approximately 30\,fps via OpenCV (\texttt{cv2.VideoCapture}). Each frame is horizontally mirrored (\texttt{cv2.flip}) to create a natural, mirror-like interaction for the user, and then converted from BGR to RGB before being passed to the pose estimator.
+
+	Skeletal landmark extraction is performed by \textbf{MediaPipe PoseLandmarker}~\cite{lugaresi2019mediapipe}, using the lightweight \textit{pose\_landmarker\_lite} model running in \texttt{VIDEO} mode. This mode enables temporal consistency, as the model maintains an internal tracking state across consecutive frames. The detection and tracking confidence thresholds are all set to 0.5. The model outputs 33 body landmarks, each represented as a tuple $(x, y, z, \text{visibility})$, with spatial coordinates normalized to the $[0, 1]$ range relative to the frame dimensions.
+
+	To mitigate the inherent jitter of single-frame landmark predictions, all 33 landmarks are passed through a custom \textbf{Kalman filter} (\texttt{signal\_filters.py}). For each of the 99 tracked scalar coordinates ($33 \times 3$), an independent scalar Kalman filter is maintained. The filter models landmark displacement as a random walk (process variance $\sigma^2_q = 10^{-5}$) and corrects estimates using noisy measurements (measurement variance $\sigma^2_r = 10^{-3}$), yielding a blending factor that progressively smooths the signal over time without introducing significant lag.
+
+	\subsection{Hybrid Vision Architecture}
+
+	The core innovation of this project is the decomposition of the control problem into three independent, parallel channels, each designed to solve a distinct subproblem with the most appropriate technique.
+
+	\vspace{4pt}
+	\noindent\textbf{Channel 1 -- Spatial Zone Classification (ML Classifier).}
+	The first channel handles continuous horizontal movement. The camera frame is conceptually divided into three physical zones: \textit{Left} ($x \in [0, 0.33)$), \textit{Center} ($x \in [0.33, 0.67]$), and \textit{Right} ($x \in (0.67, 1.0]$). When the player stands in a given zone, the game character moves accordingly (left, stops, or moves right).
+
+	The zone is identified by a trained \textbf{ML classifier}, loaded at runtime from \texttt{CV\_controller/models/best\_model.pkl}. The feature vector for each frame consists of all 132 landmark attributes (33 landmarks $\times$ 4 values: $x, y, z, \text{visibility}$), flattened into a 1D array. Two classifier architectures were trained and evaluated on this task: a Support Vector Machine (SVM) with an RBF kernel (parameters: $C=10$, $\gamma=\texttt{scale}$) and a Multilayer Perceptron (MLP) with two hidden layers of sizes 128 and 64, using ReLU activation and early stopping. Both were wrapped in a \texttt{sklearn.pipeline.Pipeline} that applies \texttt{StandardScaler} normalization before classification. The best-performing model is automatically selected and saved as \texttt{best\_model.pkl}. A geometric fallback based on the nose landmark's $x$-coordinate is applied when the model is unavailable.
+
+	\vspace{4pt}
+	\noindent\textbf{Channel 2 -- Physical Jump Detection (Geometric Heuristic).}
+	The second channel detects in-game jumps by directly tracking the player's \emph{real} physical jump. At each frame, the mean vertical $y$-coordinate of both shoulders (landmarks 11 and 12) is appended to a circular buffer of length 10. If at least 5 samples are available, the \emph{temporal delta} is computed as:
+	\[
+		\Delta y = \bar{y}_{\text{prev}} - y_{\text{current}}
+	\]
+	where $\bar{y}_{\text{prev}}$ is the mean over all preceding samples in the buffer. Since MediaPipe's $y$-axis increases downward, a positive $\Delta y > \theta_{\text{jump}} = 0.03$ (normalized units) indicates that the body has risen. When this threshold is exceeded and the cooldown period of 500\,ms has elapsed since the last jump, a \texttt{JUMP} command is emitted as a single impulse. This design completely bypasses the ML classifier for jump detection, eliminating classification latency and making the response directly tied to the user's physical action.
+
+	\vspace{4pt}
+	\noindent\textbf{Channel 3 -- Sprint Detection (Geometric Heuristic).}
+	The third channel enables sprinting via edge detection on arm posture. The position of the left wrist (landmark 16) relative to the left shoulder (landmark 12) is evaluated at each frame. If the wrist $y$-coordinate is more than $\theta_{\text{arm}} = 0.10$ (normalized units) above the shoulder $y$-coordinate, and both landmarks have visibility $> 0.5$, the arm is flagged as ``raised''. A rising-edge detector triggers a \texttt{SPRINT} command when the arm transitions from lowered to raised, and a \texttt{WALK} command on the falling edge. This ensures that a single gesture produces a single command impulse rather than a continuous stream of events.
+
+	\subsection{Voice Recognition Module}
+
+	The Voice Thread runs independently of the Vision Thread. Audio is captured via \texttt{sounddevice.RawInputStream} at a sample rate of 16\,kHz with a block size of 4000 samples ($\approx 250$\,ms per block), balancing recognition latency against CPU overhead. The audio stream is processed by \textbf{Vosk}~\cite{povey2011kaldi} using the Italian language model (\texttt{vosk-model-it}). To minimize recognition latency, a restricted vocabulary grammar is passed to the \texttt{KaldiRecognizer}: only the tokens \texttt{\{pausa, fuoco, spara, avvia, gioco, start, riprendi, continua\}} are considered, dramatically reducing the search space. Both partial and final recognition results are inspected in real time to detect the keywords \texttt{"pausa"}, \texttt{"fuoco"/"spara"}, \texttt{"riprendi"/"continua"}, and \texttt{"avvia gioco"/"start"}, which map to the game-state commands \texttt{PAUSE}, \texttt{FIRE}, \texttt{RESUME}, and \texttt{START\_GAME}, respectively.
+
+	\subsection{Command Queue and Game Integration}
+
+	All commands produced by both threads are written to a shared \texttt{queue.Queue} (Python's thread-safe FIFO). The game engine, running in the main thread, consumes commands from this queue at each game loop iteration and translates them into keyboard events using \texttt{pynput}. This decoupling ensures that the Vision and Voice modules can operate at their own natural frequencies without blocking the game loop, and that command bursts (e.g., multiple \texttt{MOVE\_LEFT} events per second) are handled gracefully.
+	
+	\section{Experimental Setup}
+    This section outlines the experimental methodology employed to evaluate \textit{SuperMarioVision}. Rather than solely testing the system under ideal laboratory conditions, we designed a comprehensive evaluation protocol to assess the controller's robustness against common environmental degradation factors, such as varying lighting, camera distance, and background noise.
+	
+	\subsection{Dataset}
+	
+	This subsection should describe the dataset used in the project. Students should report only the information that is useful to understand the experiments.
+	
+	Important information includes:
+	\begin{itemize}
+		\item dataset name and source;
+		\item number of samples and classes;
+		\item input format;
+		\item train, validation, and test split;
+		\item preprocessing steps;
+		\item relevant limitations or biases;
+		\item whether the dataset was used as provided or modified by the students.
+	\end{itemize}
+	
+	\begin{table}[h]
+		\centering
+		\caption{Dataset summary.}
+		\label{tab:dataset}
+		\begin{tabular}{|l|c|}
+			\hline
+			\textbf{Property} & \textbf{Value} \\
+			\hline
+			Dataset name & XXXX \\
+			Number of samples & XXXX \\
+			Number of classes & XX \\
+			Training samples & XXXX \\
+			Validation samples & XXXX \\
+			Test samples & XXXX \\
+			Input format & XXXX \\
+			\hline
+		\end{tabular}
+	\end{table}
+	
+	\subsection{Training and Evaluation Protocol}
+    The system was evaluated in a real-time, live execution environment. The primary objective was to measure the \textit{True Positive Rate (TPR)} of the geometric heuristics and the voice recognition module under stress. We defined three testing variables:
+    \begin{itemize}
+        \item \textbf{Lighting Variance:} Optimal daylight vs. Dark Room (monitor light only).
+        \item \textbf{Distance Variance:} Near (0.5m--1m), Medium (1.5m--2m), and Far ($>3m$).
+        \item \textbf{Audio Noise:} Silent room vs. Background music played near the microphone.
+    \end{itemize}
+    In each condition, the user performed a fixed number of predetermined actions (physical jumps, horizontal movements, and voice commands). The successful execution of the corresponding in-game action was recorded as a true positive.
+    \subsection{Results}
+    The evaluation is divided into two phases: the offline validation of the Machine Learning spatial classifiers (Channel 1) and the live environmental robustness testing of the complete multimodal pipeline.
+    \textbf{Offline Model Evaluation (SVM vs. MLP):}
+    After collecting and preprocessing the dataset, we trained two models to classify the user's spatial zone (Left, Center, Right). Both models achieved exceptional accuracy on the unseen test set (540 samples), owing to the distinct linear separability of the normalized MediaPipe landmarks. 
+    As shown in the confusion matrices (Fig.~\ref{fig:confusion_matrices}), the Support Vector Machine (SVM) achieved a perfect 100\% accuracy, correctly classifying all 180 test samples for each of the three classes. The Multilayer Perceptron (MLP) achieved a near-perfect 99.8\% accuracy, misclassifying only a single frame (predicting ``Sinistra'' instead of ``Centro''). Due to its flawless offline accuracy and computationally lighter inference time, the SVM was selected as the default spatial classifier for the live game engine.
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.48\columnwidth]{cm_svm.png}
+        \includegraphics[width=0.48\columnwidth]{cm_mlp.png}
+        \caption{Confusion matrices evaluated on the test set for the SVM (left) and MLP (right) spatial classifiers.}
+        \label{fig:confusion_matrices}
+    \end{figure}
+    \textbf{Live Environmental Robustness (Lighting):} 
+    Under optimal lighting, the physical jump heuristic achieved a perfect 100\% success rate (50/50 jumps detected). However, in dark conditions, performance varied drastically based on the spatial zone. While central jumps were perfectly recognized (20/20), jumps performed in the lateral left/right zones resulted in a complete failure (0\% recognition rate), as illustrated in the operational area depicted in Fig.~\ref{fig:radar_luce}.
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.9\columnwidth]{grafico_luce.png}
+        \caption{Radar chart demonstrating the system's operational robustness under different lighting and spatial conditions.}
+        \label{fig:radar_luce}
+    \end{figure}
+    \textbf{Live Environmental Robustness (Distance):} 
+    The system demonstrated a clear optimal operational range between 0.5m and 2.0m, scoring a 100\% success rate for all tested movements. However, at distances exceeding 3 meters, accuracy diverged (Fig.~\ref{fig:linea_distanza}). While macro-movements like the central jump remained robust (10/10), micro-movements such as sprint detection (wrist-to-shoulder distance) and peripheral zone tracking dropped to a 33.3\% success rate (5/15).
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.95\columnwidth]{grafico_distanza_linea.png}
+        \caption{Performance degradation of macro (jump) and micro (sprint/zone) movements over camera distance.}
+        \label{fig:linea_distanza}
+    \end{figure}
+    \textbf{Acoustic Noise Resistance:} 
+    The Voice Thread (Vosk) proved highly resilient to audio interference. When subjected to continuous Italian background music, the module successfully recognized 16 out of 20 discrete state commands (``Pausa'' / ``Riprendi''), maintaining an 80\% success rate in heavy noise conditions (Fig.~\ref{fig:donut_voce}).
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.85\columnwidth]{grafico_voce_donut.png}
+        \caption{Vosk speech recognition success rate under background noise interference.}
+        \label{fig:donut_voce}
+    \end{figure}
+    \subsection{Critical Discussion}
+    The offline evaluation of the spatial classifiers confirmed that static positional mapping is a relatively trivial task for modern ML architectures, provided the input data is well-normalized. Both the SVM and MLP effortlessly solved the 3-class problem. However, the contrast between the perfect offline 100\% accuracy of the SVM and its complete failure in dark lateral zones during live testing emphasizes a crucial point: purely data-driven models are inherently bottlenecked by the quality of the upstream sensor data. When MediaPipe's visibility confidence collapses due to poor lighting, even a perfectly trained SVM becomes ineffective.
+    These lighting degradation tests reveal that the geometric heuristics are highly dependent on MediaPipe's \textit{visibility} attribute. In dark conditions, optical lens distortion at the edges of the camera frame causes the pose estimator to lose track of the arms and legs. This introduces extreme jitter into the spatial coordinates, which the Kalman filter fails to smooth entirely, leading to a breakdown of the heuristic logic in lateral zones. 
+    Similarly, the distance test mathematically proves the difference between macro and micro-movements. The jump heuristic relies on the $y$-axis displacement of the shoulders ($\Delta y$), which is a large, explosive physical motion easily detected even when the user occupies a tiny fraction of the camera's resolution. Conversely, the sprint heuristic requires calculating the relative distance between two close points (the wrist and the shoulder). Beyond 3 meters, standard webcams lack the pixel density necessary to reliably separate these two landmarks, explaining the severe drop to 33.3\% accuracy.
+    Finally, the acoustic test strongly supports our multimodal approach. The 80\% retention of voice commands in noisy environments was achieved exclusively because we constrained the KaldiRecognizer to a heavily restricted vocabulary. By pruning the search space, the model prevented the background song lyrics from generating false positives. Ultimately, offloading discrete game states to a robust audio channel successfully protected the user experience from the inherent noise of the visual channel
+	
+	\section{Conclusion}
+
+    This paper introduced \textit{SuperMarioVision}, a multimodal Artificial Intelligence controller designed to replace physical gamepads with a Natural User Interface (NUI) in highly reactive environments like 2D platformers. The core problem addressed was the inherent latency constraint of traditional gesture recognition systems, which often rely on computationally expensive Machine Learning classifiers for every single user action.
+    
+    To overcome this limitation, we designed and implemented a hybrid architecture that successfully decouples continuous spatial tracking from instantaneous action triggers. We utilized an optimized Support Vector Machine (SVM) to classify spatial movement zones (Left, Center, Right) based on MediaPipe skeletal landmarks, achieving 100\% offline accuracy. Simultaneously, we completely bypassed the ML inference pipeline for critical, time-sensitive actions like jumping and sprinting. By applying deterministic geometric heuristics directly to the raw temporal derivatives of the landmarks (such as the vertical shoulder displacement, $\Delta y$), the system achieved near-zero cognitive latency, enabling a fluid and highly responsive gameplay experience. This visual pipeline was further augmented by an offline Speech Recognition module (Vosk), heavily optimized with a constrained vocabulary to manage discrete game states (e.g., Pause, Fire) even in the presence of severe background noise.
+    
+    Experimental evaluation confirmed the system's robustness under optimal lighting and operating distances (0.5m--2.0m). However, stress testing exposed the physical limitations of monocular RGB tracking: in dark environments or at distances exceeding 3 meters, the degradation of landmark \textit{visibility} causes spatial jitter, leading to a breakdown of the heuristic logic in peripheral zones. 
+    
+    Future developments of this work could address these limitations by implementing dynamic thresholding. Instead of using static geometric thresholds for jump and sprint detection, the system could automatically scale the parameters ($\theta_{\text{jump}}$ and $\theta_{\text{arm}}$) relative to the dynamically calculated bounding box of the user's torso, theoretically extending the maximum operational distance. Additionally, integrating a noise-gating filter for the audio stream could further reduce the occurrence of false positive voice commands.
+    
+    Ultimately, \textit{SuperMarioVision} demonstrates that the key to unlocking playable, controller-less action games lies not in training larger neural networks, but in the intelligent, hybrid orchestration of Machine Learning, signal processing, and multimodal inputs.
+
+	
+	\section*{Acknowledgments}
+	
+    We would like to express our gratitude to the open-source community for providing the foundational tools that made this project possible. In particular, we acknowledge the developers of MediaPipe and Vosk for their robust frameworks in computer vision and speech recognition, respectively.Furthermore, we extend our specific thanks to the creator of the Python/Pygame implementation of the 2D platformer utilized as the base game engine for this project. The original source code for the game environment was obtained from GitHub at: \url{https://github.com/Winter091/MarioPygame.git}. Our core contribution focused on heavily modifying the game engine's event loop to seamlessly integrate our custom multimodal AI controller.
+
+	
+	\begin{thebibliography}{9}
+
+      \bibitem{shotton2011kinect}
+      J. Shotton et al.,
+      ``Real-time human pose recognition in parts from single depth images,''
+      in \textit{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)}, pp. 1297--1304, 2011.
+    
+      \bibitem{lugaresi2019mediapipe}
+      C. Lugaresi et al.,
+      ``MediaPipe: A Framework for Building Perception Pipelines,''
+      in \textit{CVPR Workshop on Computer Vision for Augmented and Virtual Reality}, 2019.
+    
+      \bibitem{bazarevsky2020blazepose}
+      V. Bazarevsky, I. Grishchenko, K. Raveendran, T. Zhu, F. Zhang, and M. Grundmann,
+      ``BlazePose: On-device Real-time Body Pose tracking,''
+      in \textit{CVPR Workshop on Computer Vision for Augmented and Virtual Reality}, 2020.
+    
+      \bibitem{povey2011kaldi}
+      D. Povey et al.,
+      ``The Kaldi Speech Recognition Toolkit,''
+      in \textit{IEEE 2011 Workshop on Automatic Speech Recognition and Understanding}, 2011.
+    
+      \bibitem{tan2022gesture}
+      L. Tan et al.,
+      ``Gesture Recognition Using MediaPipe for Online Realtime Gameplay,''
+      in \textit{2022 IEEE/WIC/ACM International Joint Conference on Web Intelligence and Intelligent Agent Technology (WI-IAT)}, pp. 223--229, 2022.
+    
+    \end{thebibliography}
+    
+	
+\end{document}
