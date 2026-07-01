@@ -6,7 +6,14 @@ import time
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-# --- CONFIGURAZIONE ---
+import cv2
+import mediapipe as mp
+import csv
+import os
+import time
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+
 MODEL_PATH = 'pose_landmarker_lite.task'
 OUTPUT_CSV = 'gesture_dataset.csv'
 GESTI = ['sinistra', 'centro', 'destra']
@@ -15,16 +22,18 @@ SECONDI_PREPARAZIONE = 3
 ZONA_SINISTRA_MAX = 0.33
 ZONA_DESTRA_MIN = 0.67
 
-# 33 landmark * 4 coordinate (x, y, z, visibility)
 HEADER = ['label'] + [f'{c}{i}' for i in range(33) for c in ['x', 'y', 'z', 'v']]
 
 
 def disegna_zone(frame, zona_target=None):
+    """
+    Disegna sullo schermo tre aree verticali colorate semitrasparenti (sinistra, centro, destra)
+    per indicare all'utente dove posizionarsi.
+    """
     h, w, _ = frame.shape
     confine_sx = int(w * ZONA_SINISTRA_MAX)
     confine_dx = int(w * ZONA_DESTRA_MIN)
 
-    # Colori BGR delle tre zone
     colore_sx = (255, 150, 50)
     colore_centro = (50, 220, 50)
     colore_dx = (50, 50, 255)
@@ -54,11 +63,15 @@ def disegna_zone(frame, zona_target=None):
 
 
 def raccolta_gesto(detector, telecamera, label, frame_counter_start):
+    """
+    Gestisce la raccolta dati per un singolo gesto, includendo una fase di countdown
+    per posizionarsi e la successiva acquisizione dei landmark corporei.
+    """
     righe = []
     frame_raccolti = 0
     conteggio_frame = frame_counter_start
 
-    # Fase di preparazione (countdown)
+    # Fase di countdown
     inizio_prep = time.time()
     print(f"\n>>> Preparati per il gesto: '{label.upper()}' <<<")
     
@@ -75,17 +88,18 @@ def raccolta_gesto(detector, telecamera, label, frame_counter_start):
         cv2.putText(frame, f"Posizionati in: {label.upper()}", (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2)
         cv2.putText(frame, f"Inizio tra: {int(tempo_rimasto) + 1}s", (50, 140), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2)
         cv2.imshow('Raccolta Dati - SuperMarioVision', frame)
+        
         if cv2.waitKey(1) & 0xFF == ord('q'):
             return None, conteggio_frame
 
-    # Fase di registrazione
+    # Fase di registrazione dei frame
     print(f"    Registrazione in corso...")
     while frame_raccolti < FRAMES_PER_GESTO:
         success, frame = telecamera.read()
         if not success: continue
         frame = cv2.flip(frame, 1)
-        
         conteggio_frame += 1
+        
         img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
         results = detector.detect_for_video(mp_image, conteggio_frame * 33)
@@ -102,6 +116,7 @@ def raccolta_gesto(detector, telecamera, label, frame_counter_start):
         cv2.putText(frame, f"REC: {label.upper()}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
         cv2.putText(frame, f"{frame_raccolti}/{FRAMES_PER_GESTO} frame", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         cv2.imshow('Raccolta Dati - SuperMarioVision', frame)
+        
         if cv2.waitKey(1) & 0xFF == ord('q'):
             return None, conteggio_frame
 

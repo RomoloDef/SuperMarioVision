@@ -4,7 +4,7 @@ import ssl
 import sounddevice as sd
 from vosk import Model, KaldiRecognizer
 
-# Disabilita la verifica SSL globale e in requests (usata per il download del modello)
+# Disabilita la verifica SSL globale per consentire il download automatico del modello italiano di Vosk
 ssl._create_default_https_context = ssl._create_unverified_context
 try:
     import requests
@@ -22,8 +22,14 @@ except ImportError:
 
 
 def ascolta_microfono(coda_comandi):
+    """
+    Ascolta continuamente dal microfono i comandi vocali in italiano
+    e li invia alla coda condivisa con il gioco principale.
+    """
     print("Cerco il modello italiano (se non c'è, lo scarico in automatico)...")
     modello = Model(lang="it")
+    
+    # Riconosce solo le parole nel vocabolario per evitare falsi positivi
     vocabolario = '["pausa", "fuoco", "spara", "avvia", "gioco", "start", "riprendi", "continua", "[unk]"]'
     riconoscitore = KaldiRecognizer(modello, 16000, vocabolario)
     

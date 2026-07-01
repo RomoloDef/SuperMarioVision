@@ -7,7 +7,6 @@ import urllib.request
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-# Importazione locale per gestures e filters
 try:
     from gestures import predict_gesture
     from signal_filters import PoseFilter
@@ -15,14 +14,12 @@ except ImportError:
     from CV_controller.gestures import predict_gesture
     from CV_controller.signal_filters import PoseFilter
 
-# Connessioni dello scheletro da disegnare
 POSE_CONNECTIONS = [
     (11, 12), (11, 13), (13, 15), (12, 14), (14, 16),
     (11, 23), (12, 24), (23, 24),
     (23, 25), (24, 26), (25, 27), (26, 28)
 ]
 
-# Configurazione
 ZONA_SINISTRA_MAX = 0.33
 ZONA_DESTRA_MIN = 0.67
 SOGLIA_BRACCIO = 0.10
@@ -32,7 +29,7 @@ FINESTRA_SALTO = 10
 
 
 def download_model(model_path):
-    """Scarica il modello se non è presente localmente."""
+    """Scarica il modello di tracciamento MediaPipe Pose Landmarker se non presente."""
     if not os.path.exists(model_path):
         print(f"Scaricamento modello {model_path}...")
         url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
@@ -44,6 +41,7 @@ def download_model(model_path):
 
 
 def disegna_scheletro_manuale(frame, landmarks):
+    """Disegna sul frame i segmenti che uniscono i landmark corporei rilevati."""
     h, w, _ = frame.shape
     for start_idx, end_idx in POSE_CONNECTIONS:
         if start_idx < len(landmarks) and end_idx < len(landmarks):
@@ -57,11 +55,11 @@ def disegna_scheletro_manuale(frame, landmarks):
 
 
 def disegna_zone(frame, zona_attiva=None):
+    """Disegna le tre aree verticali per indicare all'utente i comandi associati."""
     h, w, _ = frame.shape
     confine_sx = int(w * ZONA_SINISTRA_MAX)
     confine_dx = int(w * ZONA_DESTRA_MIN)
 
-    # Colori BGR delle tre zone
     colore_sx = (255, 150, 50)
     colore_centro = (50, 220, 50)
     colore_dx = (50, 50, 255)
@@ -91,12 +89,17 @@ def disegna_zone(frame, zona_attiva=None):
 
 
 def rileva_braccio_alzato(landmarks, lato):
+    """Rileva se un braccio specifico dell'utente è alzato."""
     spalla = landmarks[11 if lato == 'destro' else 12]
     polso = landmarks[15 if lato == 'destro' else 16]
     return polso.y < (spalla.y - SOGLIA_BRACCIO) and polso.visibility > 0.5 and spalla.visibility > 0.5
 
 
 def avvia_telecamera(coda_comandi):
+    """
+    Inizializza la fotocamera e processa i frame video in tempo reale per
+    estrarre comandi di movimento, salti e sprint da inviare alla coda del gioco.
+    """
     model_path = 'pose_landmarker_lite.task'
     download_model(model_path)
 
@@ -113,6 +116,7 @@ def avvia_telecamera(coda_comandi):
     telecamera = cv2.VideoCapture(0)
     pose_filter = PoseFilter()
     storico_y_spalle = deque(maxlen=FINESTRA_SALTO)
+    
     cooldown_salto = 0
     braccio_sx_precedente = False
     conteggio_frame = 0
@@ -139,7 +143,7 @@ def avvia_telecamera(coda_comandi):
         if results.pose_landmarks:
             landmarks = pose_filter.filter(results.pose_landmarks[0])
 
-            # Classificazione zona (ML o Fallback geometrico)
+            # Classificazione orizzontale (ML con Fallback geometrico)
             gesto, confidence = predict_gesture(landmarks)
             if confidence > 0 or gesto != "unknown":
                 zona_attiva = gesto
@@ -152,24 +156,29 @@ def avvia_telecamera(coda_comandi):
                 else:
                     zona_attiva = 'centro'
 
-            # Rilevamento salto
+            # --- RILEVAMENTO SALTO ---
             y_spalle = (landmarks[11].y + landmarks[12].y) / 2
             storico_y_spalle.append(y_spalle)
+            
             if len(storico_y_spalle) >= 5:
                 valori_prec = list(storico_y_spalle)[:-1]
                 media_prec = sum(valori_prec) / len(valori_prec)
                 tempo_ms = time.time() * 1000
+                
+                # Se c'è uno spostamento rapido verso l'alto (riduzione di Y)
                 if (media_prec - y_spalle) > SOGLIA_SALTO and (tempo_ms - cooldown_salto) > COOLDOWN_SALTO_MS:
                     salto_rilevato = True
                     cooldown_salto = tempo_ms
 
-            # Sprint
+            # --- RILEVAMENTO SPRINT ---
             braccio_sx_alzato = rileva_braccio_alzato(landmarks, 'sinistro')
 
-            # Invio comandi
+            # --- INVIO COMANDI ALLA CODA ---
             coda_comandi.put("SINISTRA" if zona_attiva == 'sinistra' else "DESTRA" if zona_attiva == 'destra' else "FERMO_X")
+            
             if salto_rilevato:
                 coda_comandi.put("SALTO")
+                
             if braccio_sx_alzato and not braccio_sx_precedente:
                 coda_comandi.put("SPRINT")
             elif not braccio_sx_alzato and braccio_sx_precedente:
@@ -177,11 +186,12 @@ def avvia_telecamera(coda_comandi):
             
             braccio_sx_precedente = braccio_sx_alzato
 
-        # Visualizzazione e HUD
+        # --- RENDERING GRAFICO E HUD ---
         disegna_zone(frame, zona_attiva)
+        
         if results.pose_landmarks:
             disegna_scheletro_manuale(frame, landmarks)
-            # Info box
+            
             cv2.rectangle(frame, (10, 10), (300, 95), (0, 0, 0), -1)
             cv2.putText(frame, f"ZONA: {str(zona_attiva).upper()}", (20, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             cv2.putText(frame, f"Salto: {'SI' if salto_rilevato else 'NO'}", (20, 58), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
@@ -189,11 +199,11 @@ def avvia_telecamera(coda_comandi):
         else:
             cv2.putText(frame, "NESSUN CORPO RILEVATO", (w // 2 - 150, h // 2), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
-        # Latenza
         lat = (time.time() - loop_start) * 1000
         cv2.putText(frame, f"LAT: {lat:.0f}ms", (w - 120, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
         cv2.imshow('SuperMarioVision - AI Controller', frame)
+        
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             break
@@ -203,3 +213,5 @@ def avvia_telecamera(coda_comandi):
     telecamera.release()
     cv2.destroyAllWindows()
     detector.close()
+
+
