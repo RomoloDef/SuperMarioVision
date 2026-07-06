@@ -6,14 +6,6 @@ import time
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-import cv2
-import mediapipe as mp
-import csv
-import os
-import time
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
-
 MODEL_PATH = 'pose_landmarker_lite.task'
 OUTPUT_CSV = 'gesture_dataset.csv'
 GESTI = ['sinistra', 'centro', 'destra']
@@ -138,6 +130,12 @@ def main():
         print(f"[INFO] Nuovo dataset creato: {OUTPUT_CSV}")
     else:
         print(f"[INFO] Aggiunta dati a dataset esistente: {OUTPUT_CSV}")
+
+    """
+    Stessa cosa fatta nel file vision.py dove si avvia la telecamera.
+    Anche qui vengono mantenute le stesse impostazioni per quanto riguarda il PoseLandmarker.
+    Viene impostata una finestra di 300 frame per ogni gesto, con un countdown di 3 secondi per posizionarsi.
+    """
 
     detector = vision.PoseLandmarker.create_from_options(
         vision.PoseLandmarkerOptions(

@@ -103,16 +103,23 @@ def avvia_telecamera(coda_comandi):
     model_path = 'pose_landmarker_lite.task'
     download_model(model_path)
 
+    """
+    Tramite la modalità video, MediaPipe non analizza frame da zero, ma tiene in memoria i 
+    frame precedenti per traciare meglio i movimenti.
+    Le soglie sono state impostate a 0.5 cosi che se è sicuro al 50% che ci sia una persona, 
+    il sistema cercherà di rilevarla.
+    """
     detector = vision.PoseLandmarker.create_from_options(
         vision.PoseLandmarkerOptions(
             base_options=python.BaseOptions(model_asset_path=model_path),
-            running_mode=vision.RunningMode.VIDEO,
+            running_mode=vision.RunningMode.VIDEO,                          
             min_pose_detection_confidence=0.5,
             min_pose_presence_confidence=0.5,
             min_tracking_confidence=0.5
         )
     )
     
+    # Accensione webcam
     telecamera = cv2.VideoCapture(0)
     pose_filter = PoseFilter()
     storico_y_spalle = deque(maxlen=FINESTRA_SALTO)
@@ -128,6 +135,10 @@ def avvia_telecamera(coda_comandi):
         success, frame = telecamera.read()
         if not success: continue
 
+        # L'immagine viene specchiata per far si che i movimenti intuitivi dell'utente
+        # siano percepiti correttamente dalla camera. Cosi se l'utente muove la mano destra, 
+        # la camera la vedrà come destra, ma in realta è sinistra.
+        
         frame = cv2.flip(frame, 1)
         h, w, _ = frame.shape
         conteggio_frame += 1

@@ -71,7 +71,7 @@ def main():
         print(f"\n==================================================\n  Modello: {nome.upper()}\n==================================================")
         
         cv_scores = cross_val_score(pipeline, X_train, y_train, cv=5)
-        print(f"  Cross-val accuracy (5-fold): {cv_scores.mean():.3f} ± {cv_scores.std():.3f}")
+        print(f"   Cross-val accuracy (5-fold): {cv_scores.mean():.3f} ± {cv_scores.std():.3f}")
 
         pipeline.fit(X_train, y_train)
         y_pred = pipeline.predict(X_test)
