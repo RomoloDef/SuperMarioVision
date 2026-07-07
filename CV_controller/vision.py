@@ -53,6 +53,7 @@ def disegna_scheletro_manuale(frame, landmarks):
         if i < len(landmarks) and landmarks[i].visibility > 0.5:
             cv2.circle(frame, (int(landmarks[i].x * w), int(landmarks[i].y * h)), 5, (255, 255, 255), -1)
 
+# Al contrario del file data_collector.py questa è la funzione che viene chiamata durante il make run
 
 def disegna_zone(frame, zona_attiva=None):
     """Disegna le tre aree verticali per indicare all'utente i comandi associati."""
@@ -138,7 +139,7 @@ def avvia_telecamera(coda_comandi):
         # L'immagine viene specchiata per far si che i movimenti intuitivi dell'utente
         # siano percepiti correttamente dalla camera. Cosi se l'utente muove la mano destra, 
         # la camera la vedrà come destra, ma in realta è sinistra.
-        
+
         frame = cv2.flip(frame, 1)
         h, w, _ = frame.shape
         conteggio_frame += 1

@@ -16,6 +16,7 @@ ZONA_DESTRA_MIN = 0.67
 
 HEADER = ['label'] + [f'{c}{i}' for i in range(33) for c in ['x', 'y', 'z', 'v']]
 
+# Questa è la funzione per il disegno delle zone durante il make collect (non nel make run)
 
 def disegna_zone(frame, zona_target=None):
     """
