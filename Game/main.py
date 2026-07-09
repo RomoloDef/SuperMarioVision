@@ -12,6 +12,8 @@ if cartella_principale not in sys.path:
 from CV_controller import vision 
 from CV_controller import voice_controller 
 from core.Core import Core
+
+# In questo punto viene creata la coda condivisa e avviati i processi di visione e voce
        
 if __name__ == '__main__':
     # Necessario per la gestione della grafica su macOS

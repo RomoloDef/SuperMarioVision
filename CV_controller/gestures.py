@@ -64,7 +64,7 @@ _classifier = None
 def predict_gesture(landmarks):
     """
     Funzione helper globale per predire il gesto corrente.
-    Gestisce l'inizializzazione automatica e pigra (lazy) del GestureClassifier.
+    Gestisce l'inizializzazione automatica e pigra del GestureClassifier.
     """
     global _classifier
     if _classifier is None:
