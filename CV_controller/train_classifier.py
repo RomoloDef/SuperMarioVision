@@ -75,8 +75,8 @@ def main():
 
         pipeline.fit(X_train, y_train)
         y_pred = pipeline.predict(X_test)
-        
         accuracy = (y_pred == y_test).mean()
+        
         risultati[nome] = accuracy
         print(f"  Test accuracy: {accuracy:.3f}\n")
         print(classification_report(y_test, y_pred, target_names=le.classes_))
